@@ -232,6 +232,7 @@ button:active{transform:scale(.98)}
 .btn-restart{background:#276749;color:white}.btn-restart:hover{opacity:.85}
 .btn-danger{background:#c53030;color:white}.btn-danger:hover{opacity:.85}
 .note{font-size:.78rem;color:#718096;margin-top:10px}
+"""
 
 SHELL_JS = """\
 function showTab(id) {
@@ -441,6 +442,10 @@ def build_page(config, alert_html="", active_tab="config"):
     </form>
 
   </div>
+<script>{SHELL_JS}</script>
+</body>
+</html>"""
+
 
 # ── Backend helpers ────────────────────────────────────────────────────────────
 
