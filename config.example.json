@@ -15,7 +15,7 @@
         "priority": 2,
         "required_status": "live",
         "teams": [
-          "Cubs"
+          "Dodgers"
         ]
       },
       {
@@ -36,12 +36,17 @@
         "kind": "powerwall",
         "seconds": 30,
         "with_priority": 0
+      },
+      {
+        "kind": "powerwall",
+        "seconds": 30,
+        "with_priority": 1
       }
     ]
   },
   "news_ticker": {
     "teams": [
-      "Cubs"
+      "Dodgers"
     ],
     "traderumors": true,
     "mlb_news": true,
@@ -64,7 +69,7 @@
   },
   "standings": {
     "divisions": [
-      "NL Central",
+      "NL West",
       "NL Wild Card"
     ]
   },
