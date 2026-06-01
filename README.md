@@ -36,6 +36,7 @@ If you'd like to see support for another set of board dimensions, or have design
 - [Features](#features)
   * [Live Games](#live-games)
   * [Pregame](#pregame)
+  * [Editorial Blurbs](#editorial-blurbs)
   * [Division Standings](#division-standings)
 - [Installation](#installation)
   * [Hardware Assembly](#hardware-assembly)
@@ -97,6 +98,15 @@ If a game hasn't started yet, a pregame screen will be displayed with the probab
   <img alt="Pregame" width="auto" height="200" src="assets/img/pregame.jpg"></a>
 <a href="assets/img/128x64.png">
   <img alt="Astros-Athletics pregame" width="auto" height="200" src="assets/img/128x64.png"></a>
+
+### Editorial Blurbs
+The scoreboard pulls the MLB.com editorial blurb (`headline — subhead`) from the `game_content` endpoint and appends it to the scrolling text on the pregame and postgame screens.
+
+**Recap** blurbs appear on Final games and are usually published within ~30 minutes of the last out — most games get one.
+
+**Preview** blurbs are wired up the same way, but MLB only rarely publishes editorial previews for regular-season games. Expect them mostly on playoff or nationally-broadcast matchups; the feature stays silent the rest of the time.
+
+The behavior can be turned off by setting `editorial_blurb` to `false` in your `config.json`.
 
 ### Division Standings
 It can display standings for the provided division. Since the 32x32 board is too small to display wins and losses together, the wins and losses are alternated on the board every 5 seconds. You can also specify "NL Wild Card" or "AL Wild Card" as a 'division' to see the top 5 teams in each league's wild card race.
@@ -289,6 +299,7 @@ See [`config.schema.json`](config.schema.json) for a schema for configuration fi
 "scrolling_speed"                 Integer Sets how fast the scrolling text scrolls. Supports an integer between 0 and 6.
 "sync_delay_seconds"              Integer Delays game updates to sychronize with broadcasts. May introduce delay before rendering live games. Must be at least 0, defaults to 0 (no delay).
 "api_refresh_rate"                Integer Refresh the game data from the MLB API every X seconds. Must be at least 3, default is 10.
+"editorial_blurb"                 Bool    Append the MLB.com editorial blurb (headline + subhead) to the scrolling text on pregame and postgame screens. Recaps are routinely published; previews are rare. See the Editorial Blurbs feature section.
 "debug"                           Bool    Game and other debug data is written to your console.
 "demo_date"                       String  A date in the format YYYY-MM-DD from which to pull data to demonstrate the scoreboard. A value of `false` will disable demo mode.
 ```
