@@ -83,12 +83,12 @@
     "arrow": {
       "size": 3,
       "up": {
-        "x_offset": -5,
-        "y_offset": -6
+        "x": 51,
+        "y": 51
       },
       "down": {
-        "x_offset": -5,
-        "y_offset": -1
+        "x": 51,
+        "y": 60
       }
     }
   },

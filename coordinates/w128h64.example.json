@@ -97,12 +97,12 @@
     "arrow": {
       "size": 3,
       "up": {
-        "x_offset": 2,
-        "y_offset": -19
+        "x": 62,
+        "y": 29
       },
       "down": {
-        "x_offset": 2,
-        "y_offset": 1
+        "x": 62,
+        "y": 49
       }
     }
   },

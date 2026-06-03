@@ -127,14 +127,8 @@
       },
       "arrow": {
         "size": 3,
-        "up": {
-          "x_offset": 2,
-          "y_offset": -19
-        },
-        "down": {
-          "x_offset": 2,
-          "y_offset": 1
-        }
+        "up": { "x": 62, "y": 29 },
+        "down": { "x": 62, "y": 49 }
       }
     },
     "outs": {
