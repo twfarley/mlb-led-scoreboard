@@ -1,3 +1,5 @@
+import time
+
 from bullpen.util import scrolling_text
 
 from data import status
@@ -38,11 +40,14 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
         _render_outs(canvas, layout, colors, scoreboard.outs)
         _render_bases(canvas, layout, colors, scoreboard.bases, scoreboard.homerun(), (animation_time % 16) // 5)
 
-        _render_inning_display(canvas, layout, colors, scoreboard.inning)
-
     else:
-        _render_inning_break(canvas, layout, colors, scoreboard.inning)
+        # The inning indicator (number + blinking-half arrow) lives in the corner
+        # display below; the break screen shows only the due-up batters here.
         pos = _render_due_up(canvas, layout, colors, scoreboard.atbat, text_pos)
+
+    # Inning indicator (two stacked arrows + number) renders in both branches so
+    # the upcoming-inning blink stays visible during a break.
+    _render_inning_display(canvas, layout, colors, scoreboard.inning)
 
     return pos
 
@@ -262,21 +267,6 @@ def __fill_out_circle(canvas, out, color):
 
 
 # --------------- inning information ---------------
-def _render_inning_break(canvas, layout, colors, inning: Inning):
-
-    text_font = layout.font("inning.break.text")
-    num_font = layout.font("inning.break.number")
-    text_coords = layout.coords("inning.break.text")
-    num_coords = layout.coords("inning.break.number")
-    color = colors.graphics_color("inning.break.text")
-    text = inning.state
-    if text == "Middle":
-        text = "Mid"
-    num = inning.ordinal
-    graphics.DrawText(canvas, text_font["font"], text_coords["x"], text_coords["y"], color, text)
-    graphics.DrawText(canvas, num_font["font"], num_coords["x"], num_coords["y"], color, num)
-
-
 def _render_due_up(canvas, layout, colors, atbat: AtBat, text_pos):
     batter_font = layout.font("inning.break.due_up.leadoff")
     batter_color = colors.graphics_color("inning.break.due_up_names")
@@ -349,35 +339,47 @@ def _render_due_up(canvas, layout, colors, atbat: AtBat, text_pos):
 
 
 def _render_inning_display(canvas, layout, colors, inning: Inning):
-    __render_number(canvas, layout, colors, inning)
-    __render_inning_half(canvas, layout, colors, inning)
+    __render_inning_arrows(canvas, layout, colors, inning)
+    __render_inning_number(canvas, layout, colors, inning)
 
 
-def __render_number(canvas, layout, colors, inning):
-    number_color = colors.graphics_color("inning.number")
+def __render_inning_arrows(canvas, layout, colors, inning: Inning):
+    arrow_coords = layout.coords("inning.arrow")
+    try:
+        up = layout.coords("inning.arrow.up")
+        down = layout.coords("inning.arrow.down")
+        active = colors.graphics_color("inning.arrow.active")
+        inactive = colors.graphics_color("inning.arrow.inactive")
+    except KeyError:
+        return
+    size = arrow_coords["size"]
+
+    if status.is_inning_break(inning.state):
+        # Blink the upcoming half-inning at 1 Hz: Middle -> next is Bottom (down);
+        # End -> next inning's Top (up).
+        upcoming_is_top = inning.state == Inning.END
+        blink_on = int(time.time()) % 2 == 0
+        up_color = (active if blink_on else inactive) if upcoming_is_top else inactive
+        down_color = inactive if upcoming_is_top else (active if blink_on else inactive)
+    else:
+        is_top = inning.state == Inning.TOP
+        up_color = active if is_top else inactive
+        down_color = inactive if is_top else active
+
+    # Up arrow: tip at (x, y), grows downward
+    for offset in range(size):
+        graphics.DrawLine(canvas, up["x"] - offset, up["y"] + offset, up["x"] + offset, up["y"] + offset, up_color)
+    # Down arrow: tip at (x, y), grows upward
+    for offset in range(size):
+        graphics.DrawLine(
+            canvas, down["x"] - offset, down["y"] - offset, down["x"] + offset, down["y"] - offset, down_color
+        )
+
+
+def __render_inning_number(canvas, layout, colors, inning: Inning):
     coords = layout.coords("inning.number")
     font = layout.font("inning.number")
-    pos_x = coords["x"] - (len(str(inning.number)) * font["size"]["width"])
-    graphics.DrawText(canvas, font["font"], pos_x, coords["y"], number_color, str(inning.number))
-
-
-def __render_inning_half(canvas, layout, colors, inning):
-    font = layout.font("inning.number")
-    num_coords = layout.coords("inning.number")
-    arrow_coords = layout.coords("inning.arrow")
-    inning_size = len(str(inning.number)) * font["size"]["width"]
-    size = arrow_coords["size"]
-    top = inning.state == Inning.TOP
-    if top:
-        x = num_coords["x"] - inning_size + arrow_coords["up"]["x_offset"]
-        y = num_coords["y"] + arrow_coords["up"]["y_offset"]
-        dir = 1
-    else:
-        x = num_coords["x"] - inning_size + arrow_coords["down"]["x_offset"]
-        y = num_coords["y"] + arrow_coords["down"]["y_offset"]
-        dir = -1
-
-    keypath = "inning.arrow.up" if top else "inning.arrow.down"
-    color = colors.graphics_color(keypath)
-    for offset in range(size):
-        graphics.DrawLine(canvas, x - offset, y + (offset * dir), x + offset, y + (offset * dir), color)
+    color = colors.graphics_color("inning.number")
+    num_str = str(inning.number)
+    pos_x = coords["x"] - len(num_str) * font["size"]["width"]
+    graphics.DrawText(canvas, font["font"], pos_x, coords["y"], color, num_str)

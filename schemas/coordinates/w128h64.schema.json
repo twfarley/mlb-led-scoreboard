@@ -65,9 +65,9 @@
         "perfect_game": { "x": 93, "y": 42 }
       },
       "arrow": {
-        "size": 6,
-        "up":   { "x_offset": -11, "y_offset": -8 },
-        "down": { "x_offset": -11, "y_offset": -4 }
+        "size": 3,
+        "up":   { "x": 69, "y": 29 },
+        "down": { "x": 69, "y": 42 }
       }
     },
     "outs": {

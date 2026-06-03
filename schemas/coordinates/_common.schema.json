@@ -180,10 +180,11 @@
         },
         "arrow": {
           "type": "object",
+          "description": "Two stacked triangles indicating top/bottom of inning. Both render; active half is bright, the other is dim. Tip of each arrow at (x, y).",
           "properties": {
             "size": { "type": "integer" },
-            "up":   { "$ref": "#/$defs/offset" },
-            "down": { "$ref": "#/$defs/offset" }
+            "up":   { "$ref": "#/$defs/point" },
+            "down": { "$ref": "#/$defs/point" }
           }
         }
       }

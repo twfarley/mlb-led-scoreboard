@@ -61,9 +61,9 @@
       },
       "number": { "x": 128, "y": 8 },
       "arrow": {
-        "size": 3,
-        "up":   { "x_offset": -5, "y_offset": -4 },
-        "down": { "x_offset": -5, "y_offset": -2 }
+        "size": 2,
+        "up":   { "x": 119, "y": 1 },
+        "down": { "x": 119, "y": 8 }
       }
     },
     "outs": {

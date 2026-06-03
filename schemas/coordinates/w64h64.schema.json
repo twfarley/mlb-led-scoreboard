@@ -62,8 +62,8 @@
       "number": { "x": 61, "y": 60 },
       "arrow": {
         "size": 3,
-        "up":   { "x_offset": -5, "y_offset": -6 },
-        "down": { "x_offset": -5, "y_offset": -1 }
+        "up":   { "x": 51, "y": 51 },
+        "down": { "x": 51, "y": 60 }
       }
     },
     "outs": {
