@@ -1,0 +1,359 @@
+"""Renders a Home Assistant dashboard onto the LED matrix.
+
+Two layouts are supported:
+
+* ``grid``      – a generic grid of label/value tiles, one per configured entity.
+* ``powerwall`` – a Tesla-style solar/home/battery energy-flow screen, sourced
+                  from Home Assistant entities instead of the gateway directly.
+
+The renderer draws everything in code and falls back to the layout's default
+font, so it works on any panel size without requiring edits to the scoreboard's
+``coordinates`` or ``colors`` files. Any colour can still be overridden by
+adding a ``homeassistant.*`` key to ``colors/scoreboard.json``.
+"""
+
+from typing import TYPE_CHECKING, Optional
+
+import bullpen.api as api
+from bullpen.util import center_text_position, scrolling_text
+
+from .config import Config
+from .data import HomeAssistantData
+
+if TYPE_CHECKING:
+    from RGBMatrixEmulator.emulation.canvas import Canvas
+
+
+# ── Default palette (RGB) ────────────────────────────────────────────────────
+_DEFAULTS = {
+    "background": (0, 0, 0),
+    "title": (140, 140, 140),
+    "label": (120, 120, 120),
+    "value": (255, 255, 255),
+    "solar_icon": (255, 200, 40),
+    "home_icon": (90, 170, 255),
+    "battery_icon": (120, 220, 120),
+    "battery_fill_high": (80, 220, 100),
+    "battery_fill_mid": (235, 200, 60),
+    "battery_fill_low": (230, 90, 70),
+    "battery_wave": (255, 255, 255),
+    "battery_arrow": (255, 255, 255),
+    "grid_icon": (235, 90, 70),
+    "solar_flow_active": (255, 200, 40),
+    "solar_flow_idle": (60, 60, 60),
+    "battery_flow": (120, 220, 120),
+    "grid_flow": (235, 90, 70),
+    "solar_value": (255, 200, 40),
+    "home_value": (90, 170, 255),
+    "battery_value": (120, 220, 120),
+}
+
+
+class Renderer(api.PluginRenderer["HomeAssistantData"]):
+    def __init__(self, config: Config, layout: api.Layout, colors: api.Color) -> None:
+        self.config = config
+        self.layout = layout
+        self.colors = colors
+        self._phase = 0
+
+        self.width = getattr(layout, "width", 64)
+        self.height = getattr(layout, "height", 32)
+
+        # Fonts fall back to the layout default if these keys are absent.
+        self._value_font = layout.font("homeassistant.value_font")
+        self._label_font = layout.font("homeassistant.label_font")
+        self._scroll_font = layout.font("homeassistant.scroll_font")
+
+    # ── bullpen API ──────────────────────────────────────────────────────────
+
+    def wait_time(self) -> float:
+        # Animated layouts want a smooth refresh; static grids can idle.
+        return 0.1 if self.config.layout_mode == "powerwall" else 0.5
+
+    def can_render(self, data: HomeAssistantData) -> bool:
+        return True
+
+    def reset(self):
+        pass  # keep animation phase continuous across rotations
+
+    def render(
+        self,
+        data: HomeAssistantData,
+        canvas: "Canvas",
+        graphics: api.renderer.graphics,
+        scrolling_text_pos: int,
+    ) -> Optional[int]:
+        bg = self._color("background")
+        canvas.Fill(*bg)
+
+        if not data.available:
+            return self._render_offline(canvas, graphics, scrolling_text_pos)
+
+        if self.config.layout_mode == "powerwall":
+            return self._render_powerwall(data, canvas, graphics, scrolling_text_pos)
+        return self._render_grid(data, canvas, graphics, scrolling_text_pos)
+
+    # ── Colour helper ────────────────────────────────────────────────────────
+
+    def _color(self, name: str) -> tuple[int, int, int]:
+        """RGB tuple for ``name``, preferring a ``homeassistant.<name>`` colour
+        key if the user defined one, else the built-in default."""
+        try:
+            c = self.colors.graphics_color(f"homeassistant.{name}")
+            return (c.red, c.green, c.blue)
+        except Exception:
+            return _DEFAULTS.get(name, (255, 255, 255))
+
+    def _gcolor(self, graphics, name: str):
+        return graphics.Color(*self._color(name))
+
+    # ── Offline notice ───────────────────────────────────────────────────────
+
+    def _render_offline(self, canvas, graphics, scroll_pos) -> Optional[int]:
+        msg = "Home Assistant unavailable"
+        y = self.height // 2 + 3
+        return scrolling_text(
+            canvas, graphics, 0, y, self.width, self._scroll_font,
+            graphics.Color(200, 60, 60), self._gcolor(graphics, "background"),
+            msg, scroll_pos, center=True,
+        )
+
+    # ── Grid layout ──────────────────────────────────────────────────────────
+
+    def _render_grid(self, data, canvas, graphics, scroll_pos) -> Optional[int]:
+        tiles = self.config.tiles
+        cols = max(1, self.config.columns)
+
+        title_h = 0
+        if self.config.title:
+            self._draw_centered(canvas, graphics, self.config.title,
+                                 self._label_font, 6, self._gcolor(graphics, "title"))
+            title_h = 8
+
+        if not tiles:
+            return None
+
+        rows = (len(tiles) + cols - 1) // cols
+        cell_w = self.width // cols
+        avail_h = self.height - title_h
+        cell_h = max(1, avail_h // rows)
+
+        lh = self._label_font["size"]["height"]
+        for i, tile in enumerate(tiles):
+            col = i % cols
+            row = i // cols
+            cx = col * cell_w + cell_w // 2
+            top = title_h + row * cell_h
+
+            # Label (HA friendly_name unless overridden)
+            label = tile.label or self._friendly(data, tile.entity)
+            if label:
+                self._draw_centered(canvas, graphics, label, self._label_font,
+                                    top + lh, self._gcolor(graphics, "label"),
+                                    center_x=cx, color_override=tile.label_color, graphics=graphics)
+
+            # Value
+            value_text = self._format_value(data, tile)
+            value_color = (graphics.Color(*tile.color) if tile.color
+                           else self._gcolor(graphics, "value"))
+            self._draw_centered(canvas, graphics, value_text, self._value_font,
+                                top + cell_h - 2, value_color, center_x=cx)
+        return None
+
+    def _format_value(self, data, tile) -> str:
+        ent = data.get(tile.entity)
+        if ent is None:
+            return "—"
+        num = ent.as_float()
+        if num is None:
+            # non-numeric state (e.g. "home", "on") — title-case it
+            return ent.state.replace("_", " ").title()
+        num *= tile.scale
+        if tile.decimals <= 0:
+            body = f"{int(round(num))}"
+        else:
+            body = f"{num:.{tile.decimals}f}"
+        unit = tile.unit if tile.unit is not None else (ent.unit or "")
+        return f"{body}{unit}"
+
+    def _friendly(self, data, entity_id: str) -> str:
+        ent = data.get(entity_id)
+        if ent and ent.friendly_name:
+            return ent.friendly_name
+        return entity_id.split(".", 1)[-1].replace("_", " ").title()
+
+    # ── Powerwall layout ─────────────────────────────────────────────────────
+
+    def _render_powerwall(self, data, canvas, graphics, scroll_pos) -> Optional[int]:
+        ents = self.config.entities
+        ps = self.config.power_scale
+
+        solar_kw = data.get_float(ents.get("solar", "")) * ps
+        home_kw = data.get_float(ents.get("home", "")) * ps
+        grid_kw = data.get_float(ents.get("grid", "")) * ps
+        battery_kw = data.get_float(ents.get("battery", "")) * ps
+        charge_pct = data.get_float(ents.get("charge", ""))
+
+        # Tesla integration reports grid_power positive when importing.
+        is_importing = grid_kw > 0.05
+        is_charging = battery_kw < -0.05
+        is_discharging = battery_kw > 0.05
+
+        # Geometry scales to panel width; three columns centred on these x's.
+        w, h = self.width, self.height
+        solar_cx = w // 6
+        home_cx = w // 2
+        batt_cx = w - w // 6
+        icon_y = 1
+        icon_size = min(18, h // 3)
+
+        self._sun(canvas, graphics, solar_cx, icon_y + icon_size // 2, icon_size // 2)
+        self._house(canvas, graphics, home_cx, icon_y, icon_size)
+
+        if is_importing:
+            self._bolt(canvas, graphics, batt_cx, icon_y, icon_size)
+        else:
+            self._battery(canvas, graphics, batt_cx, icon_y, icon_size,
+                          charge_pct, is_charging, is_discharging)
+
+        # Flow dots between columns
+        flow_y = icon_y + icon_size // 2
+        gap_l = (solar_cx + home_cx) // 2
+        gap_r = (home_cx + batt_cx) // 2
+        self._phase = (self._phase + 1) % 1000
+        if solar_kw > 0.05:
+            self._flow(canvas, gap_l - 8, 16, flow_y, self._color("solar_flow_active"), True)
+        else:
+            self._flow_idle(canvas, gap_l - 8, 16, flow_y, self._color("solar_flow_idle"))
+        if is_importing:
+            self._flow(canvas, gap_r - 8, 16, flow_y, self._color("grid_flow"), False)
+        elif is_discharging:
+            self._flow(canvas, gap_r - 8, 16, flow_y, self._color("battery_flow"), False)
+
+        # Values row
+        val_y = icon_y + icon_size + self._value_font["size"]["height"] + 1
+        self._draw_centered(canvas, graphics, f"{solar_kw:.1f}kW", self._value_font,
+                            val_y, self._gcolor(graphics, "solar_value"), center_x=solar_cx)
+        self._draw_centered(canvas, graphics, f"{home_kw:.1f}kW", self._value_font,
+                            val_y, self._gcolor(graphics, "home_value"), center_x=home_cx)
+        if is_importing:
+            self._draw_centered(canvas, graphics, f"{grid_kw:.1f}kW", self._value_font,
+                                val_y, self._gcolor(graphics, "grid_flow"), center_x=batt_cx)
+        else:
+            self._draw_centered(canvas, graphics, f"{int(round(charge_pct))}%", self._value_font,
+                                val_y, self._gcolor(graphics, "battery_value"), center_x=batt_cx)
+
+        # Optional scrolling footer: solar produced today
+        solar_today_id = ents.get("solar_today", "")
+        if solar_today_id and data.has(solar_today_id):
+            kwh = data.get_float(solar_today_id)
+            text = f"Solar today: {kwh:.1f} kWh"
+            sy = h - 1
+            return scrolling_text(
+                canvas, graphics, 0, sy, w, self._scroll_font,
+                self._gcolor(graphics, "solar_value"),
+                self._gcolor(graphics, "background"),
+                text, scroll_pos, center=False, force_scroll=True,
+            )
+        return None
+
+    # ── Text helper ──────────────────────────────────────────────────────────
+
+    def _draw_centered(self, canvas, graphics, text, font, baseline_y, color,
+                       center_x=None, color_override=None, **_):
+        if center_x is None:
+            center_x = self.width // 2
+        if color_override is not None:
+            color = graphics.Color(*color_override)
+        char_w = font["size"]["width"]
+        x = center_text_position(text, center_x, char_w)
+        graphics.DrawText(canvas, font["font"], x, baseline_y, color, text)
+
+    # ── Icon primitives (code-drawn, scale with size) ────────────────────────
+
+    def _sun(self, canvas, graphics, cx, cy, r):
+        c = self._gcolor(graphics, "solar_icon")
+        rgb = (c.red, c.green, c.blue)
+        for dy in range(-1, 2):
+            for dx in range(-1, 2):
+                self._px(canvas, cx + dx, cy + dy, rgb)
+        for i in range(r - 2, r + 1):
+            self._px(canvas, cx, cy - i, rgb)
+            self._px(canvas, cx, cy + i, rgb)
+            self._px(canvas, cx - i, cy, rgb)
+            self._px(canvas, cx + i, cy, rgb)
+        for d in (r - 2, r - 1):
+            if d > 0:
+                self._px(canvas, cx - d, cy - d, rgb)
+                self._px(canvas, cx + d, cy - d, rgb)
+                self._px(canvas, cx - d, cy + d, rgb)
+                self._px(canvas, cx + d, cy + d, rgb)
+
+    def _house(self, canvas, graphics, cx, iy, size):
+        c = self._gcolor(graphics, "home_icon")
+        half = size // 2
+        peak_x = cx
+        eave_y = iy + half
+        base_y = iy + size - 1
+        graphics.DrawLine(canvas, peak_x, iy, cx - half, eave_y, c)
+        graphics.DrawLine(canvas, peak_x, iy, cx + half, eave_y, c)
+        graphics.DrawLine(canvas, cx - half, eave_y, cx + half, eave_y, c)
+        graphics.DrawLine(canvas, cx - half + 1, eave_y, cx - half + 1, base_y, c)
+        graphics.DrawLine(canvas, cx + half - 1, eave_y, cx + half - 1, base_y, c)
+        graphics.DrawLine(canvas, cx - half + 1, base_y, cx + half - 1, base_y, c)
+
+    def _battery(self, canvas, graphics, cx, iy, size, charge_pct, charging, discharging):
+        c = self._gcolor(graphics, "battery_icon")
+        half = max(4, size // 2)
+        left = cx - half // 2
+        right = cx + half // 2
+        top = iy + 2
+        bottom = iy + size - 1
+        # terminal
+        graphics.DrawLine(canvas, cx - 1, iy, cx + 1, iy, c)
+        # body
+        graphics.DrawLine(canvas, left, top, right, top, c)
+        graphics.DrawLine(canvas, left, bottom, right, bottom, c)
+        graphics.DrawLine(canvas, left, top, left, bottom, c)
+        graphics.DrawLine(canvas, right, top, right, bottom, c)
+        # fill
+        body_h = bottom - top - 1
+        fill_h = int(round(max(0.0, min(100.0, charge_pct)) / 100.0 * body_h))
+        fill_top = bottom - fill_h
+        if charge_pct > 50:
+            fill = self._color("battery_fill_high")
+        elif charge_pct > 25:
+            fill = self._color("battery_fill_mid")
+        else:
+            fill = self._color("battery_fill_low")
+        wave_row = -1
+        if (charging or discharging) and fill_h > 0:
+            step = self._phase // 3 % fill_h
+            wave_row = (bottom - 1 - step) if charging else (fill_top + step)
+        fill_c = graphics.Color(*fill)
+        wave_c = self._gcolor(graphics, "battery_wave")
+        for row in range(fill_top, bottom):
+            graphics.DrawLine(canvas, left + 1, row, right - 1, row,
+                              wave_c if row == wave_row else fill_c)
+
+    def _bolt(self, canvas, graphics, cx, iy, size):
+        c = self._gcolor(graphics, "grid_icon")
+        graphics.DrawLine(canvas, cx + 2, iy, cx - 2, iy + size // 2, c)
+        graphics.DrawLine(canvas, cx - 2, iy + size // 2, cx + 2, iy + size // 2, c)
+        graphics.DrawLine(canvas, cx + 2, iy + size // 2, cx - 2, iy + size - 1, c)
+
+    def _flow(self, canvas, x_start, width, y, color, rightward):
+        spacing, n = 4, width // 4
+        for dot in range(n):
+            pos = (self._phase // 2 + dot * spacing) % width
+            px = x_start + (pos if rightward else width - 1 - pos)
+            for dy in (-1, 0, 1):
+                self._px(canvas, px, y + dy, color)
+
+    def _flow_idle(self, canvas, x_start, width, y, color):
+        for pos in range(1, width, 4):
+            self._px(canvas, x_start + pos, y, color)
+
+    def _px(self, canvas, x, y, rgb):
+        if 0 <= x < self.width and 0 <= y < self.height:
+            canvas.SetPixel(x, y, rgb[0], rgb[1], rgb[2])

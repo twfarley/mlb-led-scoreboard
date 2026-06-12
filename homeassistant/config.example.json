@@ -1,0 +1,35 @@
+{
+  "plugins": {
+    "homeassistant": {
+      "base_url": "http://homeassistant.local:8123",
+      "token": "YOUR_LONG_LIVED_ACCESS_TOKEN",
+      "verify_ssl": true,
+      "update_interval": 30,
+      "timeout": 10,
+      "dashboard": {
+        "layout": "powerwall",
+        "power_unit": "W",
+        "entities": {
+          "solar": "sensor.solar_power",
+          "home": "sensor.load_power",
+          "grid": "sensor.grid_power",
+          "battery": "sensor.battery_power",
+          "charge": "sensor.percentage_charged",
+          "solar_today": "sensor.solar_energy_today",
+          "grid_status": "binary_sensor.grid_status"
+        }
+      },
+      "__grid_example": {
+        "layout": "grid",
+        "title": "Home",
+        "columns": 2,
+        "tiles": [
+          { "entity": "sensor.living_room_temperature", "label": "Living", "decimals": 0 },
+          { "entity": "sensor.outdoor_temperature", "label": "Outside", "decimals": 0 },
+          { "entity": "sensor.electricity_price", "label": "Price", "unit": "¢", "decimals": 1 },
+          { "entity": "sensor.solar_power", "label": "Solar", "scale": 0.001, "unit": "kW", "decimals": 2, "color": [255, 200, 40] }
+        ]
+      }
+    }
+  }
+}
