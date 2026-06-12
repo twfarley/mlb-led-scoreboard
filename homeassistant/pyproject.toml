@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlb-led-scoreboard-homeassistant"
+version = "0.1.0"
+description = "Home Assistant dashboard plugin for mlb-led-scoreboard"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.28",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mlb_led_scoreboard_homeassistant = ["icons/*.png"]
+
+[project.entry-points.'bullpen.mlbled.plugin']
+"homeassistant" = "mlb_led_scoreboard_homeassistant:load"
