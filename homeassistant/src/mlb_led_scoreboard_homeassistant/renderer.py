@@ -280,12 +280,17 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
                                 top + h // 2 + 3, self._gcolor(graphics, "value"), center_x=cx)
             return
 
-        # Charging: ETA/time text above an animated horizontal battery bar.
+        # Charging: time-remaining text above an animated horizontal battery bar.
         eta = data.get(cb["eta_entity"]) if cb["eta_entity"] else None
+        text = "Charging"
         if eta is not None and eta.state.strip().lower() not in self._NO_DATA_STATES:
-            text = f'{cb["eta_prefix"]}{self._eta_value(eta.state.strip())}{cb["eta_suffix"]}'
-        else:
-            text = "Charging"
+            mins = self._eta_minutes(eta.state.strip())
+            if mins is not None:
+                h, m = divmod(max(0, int(round(mins))), 60)
+                remaining = f"{h}h, {m}m" if h else f"{m}m"
+                text = f'{cb["eta_prefix"]}{remaining}'
+            else:
+                text = eta.state.strip()  # unparseable — show whatever HA gave
         self._draw_centered(canvas, graphics, text, self._value_font,
                             top + self._value_font["size"]["height"],
                             self._gcolor(graphics, "value"), center_x=cx)
@@ -295,15 +300,33 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         self._hbar(canvas, graphics, 4, y1 - 6, self.width - 6, y1, level)
 
     @staticmethod
-    def _eta_value(raw: str) -> str:
-        # HA timestamp sensors (e.g. Tesla time_to_full_charge) report an ISO
-        # datetime; show it as a local clock time. Anything else is shown as-is.
-        from datetime import datetime
+    def _eta_minutes(raw: str):
+        """Minutes until charge completion, parsed from any of the forms HA
+        hands us, or None if unrecognised:
+
+        * ISO completion timestamp (Tesla time_to_full_charge) -> now until then
+        * a leading duration like "25h 51m" / "1H 9M" / "51m" (golf charge_eta)
+        * a plain number of hours
+        """
+        s = raw.strip()
+        # ISO datetime -> remaining from now
+        from datetime import datetime, timezone
         try:
-            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc) if dt.tzinfo else datetime.now()
+            return (dt - now).total_seconds() / 60.0
         except ValueError:
-            return raw
-        return dt.astimezone().strftime("%-I:%M %p")
+            pass
+        # leading "<h>h <m>m" duration
+        import re
+        m = re.match(r"\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?", s, re.I)
+        if m and (m.group(1) or m.group(2)):
+            return int(m.group(1) or 0) * 60 + int(m.group(2) or 0)
+        # plain number of hours
+        try:
+            return float(s) * 60.0
+        except ValueError:
+            return None
 
     def _hbar(self, canvas, graphics, x0, y0, x1, y1, pct) -> None:
         """Horizontal battery-style progress bar filled to pct (0..100)."""
