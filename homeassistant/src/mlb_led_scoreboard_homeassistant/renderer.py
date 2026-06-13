@@ -140,8 +140,20 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         # The powerwall footer scrolls 1px per frame, so the frame budget sets
         # the scroll speed. Pace it at the scoreboard's configured scrolling
         # speed so the two match; the flow animation is time-based and stays put.
-        # Static grids have nothing to scroll, so they can idle.
-        return self.config.scrolling_speed if self.config.layout_mode == "powerwall" else 0.5
+        # A grid with a charge bar wants a smooth refresh too; plain grids idle.
+        if self.config.layout_mode == "powerwall":
+            return self.config.scrolling_speed
+        return 0.1 if self.config.charge_bar else 0.5
+
+    def _advance_phase(self) -> None:
+        # Advance the animation phase by wall-clock time so flow dots, battery
+        # waves and the charge-bar sweep keep a constant speed regardless of
+        # the frame rate.
+        now = time.monotonic()
+        dt = 0.0 if self._last_anim_t is None else now - self._last_anim_t
+        self._last_anim_t = now
+        self._phase_accum = (self._phase_accum + dt * self._ANIM_RATE) % 1000
+        self._phase = int(self._phase_accum)
 
     def can_render(self, data: HomeAssistantData) -> bool:
         return True
@@ -159,6 +171,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         bg = self._color("background")
         canvas.Fill(*bg)
         self._draw_background(canvas)
+        self._advance_phase()
 
         if not data.available:
             return self._render_offline(canvas, graphics, scrolling_text_pos)
@@ -207,12 +220,17 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
                                  self._label_font, 6, self._gcolor(graphics, "title"))
             title_h = 8
 
+        # Reserve a bottom strip for the charge bar, if configured.
+        strip_h = 22 if self.config.charge_bar else 0
+
         if not tiles:
+            if self.config.charge_bar:
+                self._render_charge_strip(canvas, graphics, data, self.height - strip_h, strip_h)
             return None
 
         rows = (len(tiles) + cols - 1) // cols
         cell_w = self.width // cols
-        avail_h = self.height - title_h
+        avail_h = self.height - title_h - strip_h
         cell_h = max(1, avail_h // rows)
 
         # Center the label+value pair vertically within each cell so the grid
@@ -242,7 +260,65 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
                            else self._gcolor(graphics, "value"))
             self._draw_centered(canvas, graphics, value_text, self._value_font,
                                 value_baseline, value_color, center_x=cx)
+
+        if self.config.charge_bar:
+            self._render_charge_strip(canvas, graphics, data, self.height - strip_h, strip_h)
         return None
+
+    def _render_charge_strip(self, canvas, graphics, data, top, h) -> None:
+        cb = self.config.charge_bar
+        ent = data.get(cb["active_entity"])
+        state = (ent.state if ent else "").strip()
+        s = state.lower()
+        charging = bool(s) and not s.startswith("not") and any(a in s for a in cb["active_states"])
+
+        cx = self.width // 2
+        if not charging:
+            # Idle: just the charging status, centered (e.g. "Disconnected").
+            text = state.replace("_", " ").title() or "—"
+            self._draw_centered(canvas, graphics, text, self._value_font,
+                                top + h // 2 + 3, self._gcolor(graphics, "value"), center_x=cx)
+            return
+
+        # Charging: ETA/time text above an animated horizontal battery bar.
+        eta = data.get(cb["eta_entity"]) if cb["eta_entity"] else None
+        if eta is not None and eta.state.strip().lower() not in self._NO_DATA_STATES:
+            text = f'{cb["eta_prefix"]}{eta.state.strip()}{cb["eta_suffix"]}'
+        else:
+            text = "Charging"
+        self._draw_centered(canvas, graphics, text, self._value_font,
+                            top + self._value_font["size"]["height"],
+                            self._gcolor(graphics, "value"), center_x=cx)
+
+        level = max(0.0, min(100.0, data.get_float(cb["level_entity"])))
+        y1 = top + h - 2
+        self._hbar(canvas, graphics, 4, y1 - 6, self.width - 6, y1, level)
+
+    def _hbar(self, canvas, graphics, x0, y0, x1, y1, pct) -> None:
+        """Horizontal battery-style progress bar filled to pct (0..100)."""
+        outline = self._gcolor(graphics, "battery_icon")
+        graphics.DrawLine(canvas, x0, y0, x1, y0, outline)
+        graphics.DrawLine(canvas, x0, y1, x1, y1, outline)
+        graphics.DrawLine(canvas, x0, y0, x0, y1, outline)
+        graphics.DrawLine(canvas, x1, y0, x1, y1, outline)
+        midy = (y0 + y1) // 2
+        graphics.DrawLine(canvas, x1 + 1, midy - 1, x1 + 1, midy + 1, outline)  # terminal nub
+
+        if pct > 50:
+            fill = self._color("battery_fill_high")
+        elif pct > 25:
+            fill = self._color("battery_fill_mid")
+        else:
+            fill = self._color("battery_fill_low")
+        inner_w = (x1 - 1) - (x0 + 1)
+        fill_w = int(round(pct / 100.0 * inner_w))
+        # animated highlight column sweeping rightward through the fill
+        wave_col = (x0 + 1 + int(self._phase) // 2 % fill_w) if fill_w > 0 else -1
+        fill_c = graphics.Color(*fill)
+        wave_c = self._gcolor(graphics, "battery_wave")
+        for col in range(x0 + 1, x0 + 1 + fill_w):
+            graphics.DrawLine(canvas, col, y0 + 1, col, y1 - 1,
+                              wave_c if col == wave_col else fill_c)
 
     # States that mean "no data" — used to hide hide_when_unavailable tiles.
     _NO_DATA_STATES = {"unknown", "unavailable", "none", "", "—", "–", "-"}
@@ -315,11 +391,6 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         flow_y = icon_y + icon_size // 2
         gap_l = (solar_cx + home_cx) // 2
         gap_r = (home_cx + batt_cx) // 2
-        now = time.monotonic()
-        dt = 0.0 if self._last_anim_t is None else now - self._last_anim_t
-        self._last_anim_t = now
-        self._phase_accum = (self._phase_accum + dt * self._ANIM_RATE) % 1000
-        self._phase = int(self._phase_accum)
         if solar_kw > 0.05:
             self._flow(canvas, gap_l - 8, 16, flow_y, self._color("solar_flow_active"), True)
         else:

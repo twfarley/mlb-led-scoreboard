@@ -82,6 +82,20 @@ class Config(api.PluginConfig):
         ]
         self.columns: int = int(dashboard.get("columns", 2))
 
+        # Optional charge bar for the grid: a horizontal battery-style progress
+        # bar shown in a reserved bottom strip. While `active_entity` reads as
+        # charging it draws an animated bar filled to `level_entity` plus the
+        # `eta_entity` text; otherwise it shows the charging status as text.
+        cb = dashboard.get("charge_bar") or {}
+        self.charge_bar: Optional[dict] = {
+            "active_entity": cb.get("active_entity", ""),
+            "active_states": [s.lower() for s in cb.get("active_states", ["charging"])],
+            "level_entity": cb.get("level_entity", ""),
+            "eta_entity": cb.get("eta_entity", ""),
+            "eta_prefix": cb.get("eta_prefix", ""),
+            "eta_suffix": cb.get("eta_suffix", ""),
+        } if cb else None
+
         # powerwall layout
         entities = dict(_POWERWALL_DEFAULT_ENTITIES)
         entities.update(dashboard.get("entities", {}) or {})
@@ -99,6 +113,9 @@ class Config(api.PluginConfig):
             ids = [e for e in self.entities.values() if e]
         else:
             ids = [t.entity for t in self.tiles if t.entity]
+            if self.charge_bar:
+                ids += [self.charge_bar[k] for k in ("active_entity", "level_entity", "eta_entity")
+                        if self.charge_bar[k]]
         # preserve order, drop dupes
         seen: set[str] = set()
         unique = []
