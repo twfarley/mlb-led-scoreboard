@@ -66,10 +66,34 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         self.width = getattr(layout, "width", 64)
         self.height = getattr(layout, "height", 32)
 
-        # Fonts fall back to the layout default if these keys are absent.
-        self._value_font = layout.font("homeassistant.value_font")
-        self._label_font = layout.font("homeassistant.label_font")
-        self._scroll_font = layout.font("homeassistant.scroll_font")
+        # The grid packs a label + value into tiles only ~18px tall, so the
+        # layout's default font (sized for game screens, e.g. 7x13) overflows
+        # and the two lines collide. Use compact bundled fonts for the grid;
+        # the powerwall layout has room, so it keeps the layout default.
+        if config.layout_mode == "grid":
+            self._value_font = self._grid_font("homeassistant.value_font", "5x7")
+            self._label_font = self._grid_font("homeassistant.label_font", "4x6")
+            self._scroll_font = self._grid_font("homeassistant.scroll_font", "5x7")
+        else:
+            self._value_font = layout.font("homeassistant.value_font")
+            self._label_font = layout.font("homeassistant.label_font")
+            self._scroll_font = layout.font("homeassistant.scroll_font")
+
+    def _grid_font(self, keypath: str, default_name: str) -> dict:
+        """Font for a grid keypath, defaulting to a compact bundled font.
+
+        Honours an explicit ``font_name`` override in the coordinates file if
+        one exists; otherwise loads ``default_name`` directly rather than
+        falling back to the layout's (larger) default. Falls back to the public
+        ``layout.font`` only if the named font can't be loaded.
+        """
+        try:
+            name = self.layout.coords(keypath)["font_name"]
+        except Exception:
+            name = default_name
+        loader = getattr(self.layout, "_Layout__get_font_object", None)
+        font = loader(name) if loader is not None else None
+        return font or self.layout.font(keypath)
 
     # ── bullpen API ──────────────────────────────────────────────────────────
 
