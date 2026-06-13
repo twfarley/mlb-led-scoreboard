@@ -19,4 +19,9 @@ where = ["src"]
 mlb_led_scoreboard_homeassistant = ["icons/*.png"]
 
 [project.entry-points.'bullpen.mlbled.plugin']
+# Each entry point is an independent dashboard reading its own plugins.<name>
+# config block. They all share the same load(); the config block (and the
+# rotation screen "kind") is what makes them distinct.
 "homeassistant" = "mlb_led_scoreboard_homeassistant:load"
+"tesla" = "mlb_led_scoreboard_homeassistant:load"
+"golf" = "mlb_led_scoreboard_homeassistant:load"
