@@ -71,6 +71,14 @@ class HomeAssistantData(PluginData):
             self._fetch()
             self.available = True
             return UpdateStatus.SUCCESS
+        except requests.exceptions.RequestException as e:
+            # Network hiccup (timeout, connection refused, ...). Keep showing
+            # the last-known values rather than flipping to "unavailable", and
+            # log a one-line warning instead of a full stack trace.
+            LOGGER.warning(
+                "[HOMEASSISTANT] Fetch from %s failed: %s", self.config.base_url, e
+            )
+            return UpdateStatus.FAIL
         except Exception:
             LOGGER.exception(
                 "[HOMEASSISTANT] Failed to fetch states from %s", self.config.base_url
@@ -81,32 +89,14 @@ class HomeAssistantData(PluginData):
     # ── Fetch ────────────────────────────────────────────────────────────────
 
     def _fetch(self) -> None:
-        wanted = self.config.all_entity_ids()
-        if not wanted:
-            return
-
-        # One call to /api/states is cheaper than N calls to /api/states/<id>
-        # once we want more than a couple of entities.
-        if len(wanted) > 2:
-            self._fetch_all(set(wanted))
-        else:
-            for entity_id in wanted:
-                self._fetch_one(entity_id)
-
-    def _fetch_all(self, wanted: set[str]) -> None:
-        url = f"{self.config.base_url}/api/states"
-        resp = self._session.get(
-            url, verify=self.config.verify_ssl, timeout=self.config.timeout
-        )
-        resp.raise_for_status()
-        for item in resp.json():
-            eid = item.get("entity_id")
-            if eid in wanted:
-                self.states[eid] = EntityState(
-                    entity_id=eid,
-                    state=str(item.get("state", "")),
-                    attributes=item.get("attributes", {}) or {},
-                )
+        # Fetch only the entities we actually display, one targeted request
+        # each. The /api/states bulk endpoint returns *every* entity in the HA
+        # instance (hundreds of them, fully serialised) — far more work for the
+        # server than a handful of /api/states/<id> calls, and the cause of the
+        # read timeouts when several dashboards polled it. Requests reuse the
+        # session's keep-alive connection, so the per-entity calls are cheap.
+        for entity_id in self.config.all_entity_ids():
+            self._fetch_one(entity_id)
 
     def _fetch_one(self, entity_id: str) -> None:
         url = f"{self.config.base_url}/api/states/{entity_id}"
