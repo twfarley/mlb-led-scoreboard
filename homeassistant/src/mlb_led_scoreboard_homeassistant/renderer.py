@@ -157,7 +157,10 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
     # ── Grid layout ──────────────────────────────────────────────────────────
 
     def _render_grid(self, data, canvas, graphics, scroll_pos) -> Optional[int]:
-        tiles = self.config.tiles
+        # Tiles flagged hide_when_unavailable drop out (and free their slot)
+        # when their entity has no data — e.g. a charge-ETA tile that only
+        # appears while the car is charging.
+        tiles = [t for t in self.config.tiles if self._tile_visible(data, t)]
         cols = max(1, self.config.columns)
 
         title_h = 0
@@ -174,18 +177,25 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         avail_h = self.height - title_h
         cell_h = max(1, avail_h // rows)
 
+        # Center the label+value pair vertically within each cell so the grid
+        # reads well whether cells are tight (many tiles) or roomy (few tiles).
         lh = self._label_font["size"]["height"]
+        vh = self._value_font["size"]["height"]
+        gap = 2
+        pad = max(0, (cell_h - (lh + gap + vh)) // 2)
         for i, tile in enumerate(tiles):
             col = i % cols
             row = i // cols
             cx = col * cell_w + cell_w // 2
             top = title_h + row * cell_h
+            label_baseline = top + pad + lh
+            value_baseline = label_baseline + gap + vh
 
             # Label (HA friendly_name unless overridden)
             label = tile.label or self._friendly(data, tile.entity)
             if label:
                 self._draw_centered(canvas, graphics, label, self._label_font,
-                                    top + lh, self._gcolor(graphics, "label"),
+                                    label_baseline, self._gcolor(graphics, "label"),
                                     center_x=cx, color_override=tile.label_color)
 
             # Value
@@ -193,8 +203,19 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             value_color = (graphics.Color(*tile.color) if tile.color
                            else self._gcolor(graphics, "value"))
             self._draw_centered(canvas, graphics, value_text, self._value_font,
-                                top + cell_h - 2, value_color, center_x=cx)
+                                value_baseline, value_color, center_x=cx)
         return None
+
+    # States that mean "no data" — used to hide hide_when_unavailable tiles.
+    _NO_DATA_STATES = {"unknown", "unavailable", "none", "", "—", "–", "-"}
+
+    def _tile_visible(self, data, tile) -> bool:
+        if not tile.hide_when_unavailable:
+            return True
+        ent = data.get(tile.entity)
+        if ent is None:
+            return False
+        return ent.state.strip().lower() not in self._NO_DATA_STATES
 
     def _format_value(self, data, tile) -> str:
         ent = data.get(tile.entity)
@@ -287,7 +308,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         solar_today_id = ents.get("solar_today", "")
         if solar_today_id and data.has(solar_today_id):
             kwh = data.get_float(solar_today_id)
-            text = f"Solar today: {kwh:.1f} kWh"
+            text = f"Solar Power Generated today: {kwh:.1f} kWh"
             sy = h - 1
             return scrolling_text(
                 canvas, graphics, 0, sy, w, self._scroll_font,

@@ -23,6 +23,7 @@ class Tile:
     scale: float = 1.0                  # multiply the numeric state (e.g. 0.001 for W -> kW)
     color: Optional[list] = None        # [r, g, b] for the value text
     label_color: Optional[list] = None  # [r, g, b] for the label text
+    hide_when_unavailable: bool = False  # drop the tile entirely when its state has no data
 
     @staticmethod
     def from_dict(raw: dict[str, Any]) -> "Tile":
@@ -34,6 +35,7 @@ class Tile:
             scale=float(raw.get("scale", 1.0)),
             color=raw.get("color"),
             label_color=raw.get("label_color"),
+            hide_when_unavailable=bool(raw.get("hide_when_unavailable", False)),
         )
 
 
