@@ -283,7 +283,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         # Charging: ETA/time text above an animated horizontal battery bar.
         eta = data.get(cb["eta_entity"]) if cb["eta_entity"] else None
         if eta is not None and eta.state.strip().lower() not in self._NO_DATA_STATES:
-            text = f'{cb["eta_prefix"]}{eta.state.strip()}{cb["eta_suffix"]}'
+            text = f'{cb["eta_prefix"]}{self._eta_value(eta.state.strip())}{cb["eta_suffix"]}'
         else:
             text = "Charging"
         self._draw_centered(canvas, graphics, text, self._value_font,
@@ -293,6 +293,17 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         level = max(0.0, min(100.0, data.get_float(cb["level_entity"])))
         y1 = top + h - 2
         self._hbar(canvas, graphics, 4, y1 - 6, self.width - 6, y1, level)
+
+    @staticmethod
+    def _eta_value(raw: str) -> str:
+        # HA timestamp sensors (e.g. Tesla time_to_full_charge) report an ISO
+        # datetime; show it as a local clock time. Anything else is shown as-is.
+        from datetime import datetime
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw
+        return dt.astimezone().strftime("%-I:%M %p")
 
     def _hbar(self, canvas, graphics, x0, y0, x1, y1, pct) -> None:
         """Horizontal battery-style progress bar filled to pct (0..100)."""
