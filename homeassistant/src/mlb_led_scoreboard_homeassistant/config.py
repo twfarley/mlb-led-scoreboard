@@ -70,6 +70,12 @@ class Config(api.PluginConfig):
         self.layout_mode: str = dashboard.get("layout", "grid")
         self.title: str = dashboard.get("title", "")
 
+        # Optional dimmed background image drawn behind the dashboard. The name
+        # is resolved as a path as-is, then against the plugin's bundled icons
+        # directory. Opacity is 0..1 (0.15 = a faint 15% wash).
+        self.background_image: str = dashboard.get("background_image", "")
+        self.background_opacity: float = float(dashboard.get("background_opacity", 0.15))
+
         # grid layout
         self.tiles: list[Tile] = [
             Tile.from_dict(t) for t in dashboard.get("tiles", []) if t.get("entity")

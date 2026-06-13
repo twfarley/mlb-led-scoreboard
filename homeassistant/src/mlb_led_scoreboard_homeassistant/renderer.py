@@ -12,10 +12,13 @@ font, so it works on any panel size without requiring edits to the scoreboard's
 adding a ``homeassistant.*`` key to ``colors/scoreboard.json``.
 """
 
+import os
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import bullpen.api as api
+from bullpen.logging import LOGGER
 from bullpen.util import center_text_position, scrolling_text
 
 from .config import Config
@@ -79,6 +82,40 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             self._label_font = layout.font("homeassistant.label_font")
             self._scroll_font = layout.font("homeassistant.scroll_font")
 
+        # Precompute the dimmed background image once: a flat list of
+        # (x, y, r, g, b) for the pixels worth drawing.
+        self._bg_pixels: list = self._load_background()
+
+    def _load_background(self) -> list:
+        name = self.config.background_image
+        if not name:
+            return []
+        path = name if os.path.isfile(name) else str(Path(__file__).parent / "icons" / name)
+        if not os.path.isfile(path):
+            LOGGER.warning("[HOMEASSISTANT] Background image not found: %s", name)
+            return []
+        try:
+            from PIL import Image
+        except ImportError:
+            LOGGER.warning("[HOMEASSISTANT] Pillow not installed; skipping background image")
+            return []
+
+        opacity = max(0.0, min(1.0, self.config.background_opacity))
+        img = Image.open(path).convert("RGBA").resize((self.width, self.height), Image.LANCZOS)
+        pixels = []
+        for y in range(self.height):
+            for x in range(self.width):
+                r, g, b, a = img.getpixel((x, y))
+                f = (a / 255.0) * opacity      # alpha-weighted, composited over black
+                rr, gg, bb = round(r * f), round(g * f), round(b * f)
+                if rr or gg or bb:
+                    pixels.append((x, y, rr, gg, bb))
+        return pixels
+
+    def _draw_background(self, canvas) -> None:
+        for x, y, r, g, b in self._bg_pixels:
+            canvas.SetPixel(x, y, r, g, b)
+
     def _grid_font(self, keypath: str, default_name: str) -> dict:
         """Font for a grid keypath, defaulting to a compact bundled font.
 
@@ -121,6 +158,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
     ) -> Optional[int]:
         bg = self._color("background")
         canvas.Fill(*bg)
+        self._draw_background(canvas)
 
         if not data.available:
             return self._render_offline(canvas, graphics, scrolling_text_pos)
