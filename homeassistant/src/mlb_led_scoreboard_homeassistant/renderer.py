@@ -12,6 +12,7 @@ font, so it works on any panel size without requiring edits to the scoreboard's
 adding a ``homeassistant.*`` key to ``colors/scoreboard.json``.
 """
 
+import time
 from typing import TYPE_CHECKING, Optional
 
 import bullpen.api as api
@@ -54,7 +55,13 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         self.config = config
         self.layout = layout
         self.colors = colors
+        # Animation phase is advanced by wall-clock time (see _render_powerwall)
+        # so the flow-dot/battery-wave speed stays constant regardless of the
+        # frame rate. _ANIM_RATE is phase-units per second; 10 matches the look
+        # of the old fixed 0.1s-per-frame cadence.
         self._phase = 0
+        self._phase_accum = 0.0
+        self._last_anim_t: Optional[float] = None
 
         self.width = getattr(layout, "width", 64)
         self.height = getattr(layout, "height", 32)
@@ -66,9 +73,14 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
 
     # ── bullpen API ──────────────────────────────────────────────────────────
 
+    _ANIM_RATE = 10.0  # animation phase-units per second
+
     def wait_time(self) -> float:
-        # Animated layouts want a smooth refresh; static grids can idle.
-        return 0.1 if self.config.layout_mode == "powerwall" else 0.5
+        # The powerwall footer scrolls 1px per frame, so the frame budget sets
+        # the scroll speed. Pace it at the scoreboard's configured scrolling
+        # speed so the two match; the flow animation is time-based and stays put.
+        # Static grids have nothing to scroll, so they can idle.
+        return self.config.scrolling_speed if self.config.layout_mode == "powerwall" else 0.5
 
     def can_render(self, data: HomeAssistantData) -> bool:
         return True
@@ -150,7 +162,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             if label:
                 self._draw_centered(canvas, graphics, label, self._label_font,
                                     top + lh, self._gcolor(graphics, "label"),
-                                    center_x=cx, color_override=tile.label_color, graphics=graphics)
+                                    center_x=cx, color_override=tile.label_color)
 
             # Value
             value_text = self._format_value(data, tile)
@@ -220,7 +232,11 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         flow_y = icon_y + icon_size // 2
         gap_l = (solar_cx + home_cx) // 2
         gap_r = (home_cx + batt_cx) // 2
-        self._phase = (self._phase + 1) % 1000
+        now = time.monotonic()
+        dt = 0.0 if self._last_anim_t is None else now - self._last_anim_t
+        self._last_anim_t = now
+        self._phase_accum = (self._phase_accum + dt * self._ANIM_RATE) % 1000
+        self._phase = int(self._phase_accum)
         if solar_kw > 0.05:
             self._flow(canvas, gap_l - 8, 16, flow_y, self._color("solar_flow_active"), True)
         else:
