@@ -92,8 +92,10 @@ class Config(api.PluginConfig):
             "active_states": [s.lower() for s in cb.get("active_states", ["charging"])],
             "level_entity": cb.get("level_entity", ""),
             "eta_entity": cb.get("eta_entity", ""),
-            "eta_prefix": cb.get("eta_prefix", ""),
-            "eta_suffix": cb.get("eta_suffix", ""),
+            # `eta_entity` may be an ISO completion timestamp or a duration
+            # string; either way the time remaining is computed and shown as
+            # "<eta_prefix><h>h, <m>m".
+            "eta_prefix": cb.get("eta_prefix", "Complete in "),
         } if cb else None
 
         # powerwall layout
