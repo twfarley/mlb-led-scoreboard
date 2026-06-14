@@ -98,6 +98,17 @@ class Config(api.PluginConfig):
             "eta_prefix": cb.get("eta_prefix", "Complete in "),
         } if cb else None
 
+        # Optional visibility gate: the dashboard is only shown in the rotation
+        # while one of `entities` reads a state in `states` (default "on"), e.g.
+        # only show the pool screen while a pump is running. Accepts a single
+        # `entity` or a list of `entities`.
+        sw = dashboard.get("show_when") or {}
+        sw_entities = sw.get("entities") or ([sw["entity"]] if sw.get("entity") else [])
+        self.show_when: Optional[dict] = {
+            "entities": sw_entities,
+            "states": [s.lower() for s in sw.get("states", ["on"])],
+        } if sw_entities else None
+
         # powerwall layout
         entities = dict(_POWERWALL_DEFAULT_ENTITIES)
         entities.update(dashboard.get("entities", {}) or {})
@@ -118,6 +129,8 @@ class Config(api.PluginConfig):
             if self.charge_bar:
                 ids += [self.charge_bar[k] for k in ("active_entity", "level_entity", "eta_entity")
                         if self.charge_bar[k]]
+        if self.show_when:
+            ids += self.show_when["entities"]
         # preserve order, drop dupes
         seen: set[str] = set()
         unique = []

@@ -156,7 +156,18 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         self._phase = int(self._phase_accum)
 
     def can_render(self, data: HomeAssistantData) -> bool:
-        return True
+        # A `show_when`-gated dashboard is skipped in the rotation unless one of
+        # its gate entities reads an active state (e.g. only show the pool screen
+        # while a pump is running). Data keeps refreshing while hidden, so the
+        # screen reappears on its own once the gate flips.
+        sw = self.config.show_when
+        if not sw:
+            return True
+        for eid in sw["entities"]:
+            ent = data.get(eid)
+            if ent is not None and ent.state.strip().lower() in sw["states"]:
+                return True
+        return False
 
     def reset(self):
         pass  # keep animation phase continuous across rotations
