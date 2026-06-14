@@ -286,8 +286,8 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         if eta is not None and eta.state.strip().lower() not in self._NO_DATA_STATES:
             mins = self._eta_minutes(eta.state.strip())
             if mins is not None:
-                h, m = divmod(max(0, int(round(mins))), 60)
-                remaining = f"{h}h, {m}m" if h else f"{m}m"
+                hrs, mins_rem = divmod(max(0, int(round(mins))), 60)
+                remaining = f"{hrs}h, {mins_rem}m" if hrs else f"{mins_rem}m"
                 text = f'{cb["eta_prefix"]}{remaining}'
             else:
                 text = eta.state.strip()  # unparseable — show whatever HA gave
