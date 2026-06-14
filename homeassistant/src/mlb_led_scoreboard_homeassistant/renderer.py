@@ -74,22 +74,22 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         self.width = getattr(layout, "width", 64)
         self.height = getattr(layout, "height", 32)
 
-        # The grid packs a label + value into tiles only ~18px tall, so the
-        # layout's default font (sized for game screens, e.g. 7x13) overflows
-        # and the two lines collide. Use compact bundled fonts for the grid;
-        # the powerwall layout has room, so it keeps the layout default.
-        if config.layout_mode == "grid":
-            self._value_font = self._grid_font("homeassistant.value_font", "5x7")
-            self._label_font = self._grid_font("homeassistant.label_font", "4x6")
-            self._scroll_font = self._grid_font("homeassistant.scroll_font", "5x7")
-        else:
-            self._value_font = layout.font("homeassistant.value_font")
-            self._label_font = layout.font("homeassistant.label_font")
-            self._scroll_font = layout.font("homeassistant.scroll_font")
+        # Both layouts pack a lot into a small panel, so use compact bundled
+        # fonts rather than the layout's large default (sized for game screens,
+        # e.g. 7x13). An explicit homeassistant.*_font coordinate override still
+        # wins if present.
+        self._value_font = self._compact_font("homeassistant.value_font", "5x7")
+        self._label_font = self._compact_font("homeassistant.label_font", "4x6")
+        self._scroll_font = self._compact_font("homeassistant.scroll_font", "5x7")
 
         # Precompute the dimmed background image once: a flat list of
         # (x, y, r, g, b) for the pixels worth drawing.
         self._bg_pixels: list = self._load_background()
+        # Code-drawn house behind the powerwall energy-flow screen, used only
+        # when no background image is configured. Precomputed once.
+        self._house_pixels: list = (
+            self._build_house() if config.layout_mode == "powerwall" else []
+        )
 
     def _load_background(self) -> list:
         name = self.config.background_image
@@ -121,8 +121,8 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         for x, y, r, g, b in self._bg_pixels:
             canvas.SetPixel(x, y, r, g, b)
 
-    def _grid_font(self, keypath: str, default_name: str) -> dict:
-        """Font for a grid keypath, defaulting to a compact bundled font.
+    def _compact_font(self, keypath: str, default_name: str) -> dict:
+        """Font for a keypath, defaulting to a compact bundled font.
 
         Honours an explicit ``font_name`` override in the coordinates file if
         one exists; otherwise loads ``default_name`` directly rather than
@@ -145,10 +145,11 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         # The powerwall footer scrolls 1px per frame, so the frame budget sets
         # the scroll speed. Pace it at the scoreboard's configured scrolling
         # speed so the two match; the flow animation is time-based and stays put.
-        # A grid with a charge bar wants a smooth refresh too; plain grids idle.
-        if self.config.layout_mode == "powerwall":
-            return self.config.scrolling_speed
-        return 0.1 if self.config.charge_bar else 0.5
+        # Powerwall (flow dots) and a charge-bar grid (sweep) want a smooth
+        # refresh; their animation is time-based. Plain grids can idle.
+        if self.config.layout_mode == "powerwall" or self.config.charge_bar:
+            return 0.1
+        return 0.5
 
     def _advance_phase(self) -> None:
         # Advance the animation phase by wall-clock time so flow dots, battery
@@ -409,6 +410,11 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         """Tesla-app-style energy-flow screen: four corner readings around a
         centre meter, joined by flow lines that animate toward whatever is
         consuming power. Green = solar/battery/clean, orange = grid."""
+        # House sits behind everything (unless a background image is set).
+        if not self._bg_pixels:
+            for x, y, rgb in self._house_pixels:
+                self._px(canvas, x, y, rgb)
+
         ents = self.config.entities
         ps = self.config.power_scale
 
@@ -425,35 +431,51 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         discharging = battery > 0.05
 
         w, h = self.width, self.height
-        cx, cy = w // 2, h // 2
         green = self._color("flow")
         orange = self._color("flow_grid")
+        art = bool(self._bg_pixels)
 
-        # Where each reading's flow line attaches, and the meter's corners.
-        sol = (round(w * 0.27), round(h * 0.30))
-        hom = (round(w * 0.73), round(h * 0.30))
-        pw = (round(w * 0.27), round(h * 0.70))
-        grd = (round(w * 0.73), round(h * 0.70))
-        m_tl, m_tr = (cx - 3, cy - 3), (cx + 3, cy - 3)
-        m_bl, m_br = (cx - 3, cy + 3), (cx + 3, cy + 3)
+        def pt(fx, fy):
+            return (round(w * fx), round(h * fy))
 
-        # Flow lines (dots animate from the first point toward the second).
-        self._flow_line(canvas, sol, m_tl, green, solar > 0.05)
-        self._flow_line(canvas, m_tr, hom, orange if importing else green, home > 0.05)
+        cx, cy = w // 2, h // 2
+        if art:
+            # Flow segments hand-aligned to the house art's lead lines. Each is
+            # (meter-end, element-end); the art already draws the lines and the
+            # meter, so we only animate dots on top (base=False).
+            def A(x, y):
+                return (round(x * w / 128), round(y * h / 64))
+            sol_m, sol_e = A(68, 40), A(68, 32)
+            hom_m, hom_e = A(70, 43), A(80, 40)
+            grd_m, grd_e = A(69, 51), A(92, 58)
+            pw_m, pw_e = A(67, 43), A(53, 45)
+        else:
+            sol_m = hom_m = grd_m = pw_m = (cx, cy)
+            sol_e, hom_e = pt(0.27, 0.30), pt(0.73, 0.30)
+            pw_e, grd_e = pt(0.27, 0.70), pt(0.73, 0.70)
+
+        base = not art
+        # Solar: panels -> meter while producing.
+        self._flow_line(canvas, sol_e, sol_m, green, solar > 0.05, base)
+        # Home: meter -> house (orange if the grid is feeding it).
+        self._flow_line(canvas, hom_m, hom_e, orange if importing else green, home > 0.05, base)
+        # Powerwall: meter -> battery when charging, battery -> meter when discharging.
         if charging:
-            self._flow_line(canvas, m_bl, pw, green, True)
+            self._flow_line(canvas, pw_m, pw_e, green, True, base)
         elif discharging:
-            self._flow_line(canvas, pw, m_bl, green, True)
+            self._flow_line(canvas, pw_e, pw_m, green, True, base)
         else:
-            self._flow_line(canvas, pw, m_bl, green, False)
+            self._flow_line(canvas, pw_e, pw_m, green, False, base)
+        # Grid: grid -> meter when importing (orange), meter -> grid when exporting.
         if importing:
-            self._flow_line(canvas, grd, m_br, orange, True)
+            self._flow_line(canvas, grd_e, grd_m, orange, True, base)
         elif exporting:
-            self._flow_line(canvas, m_br, grd, green, True)
+            self._flow_line(canvas, grd_m, grd_e, green, True, base)
         else:
-            self._flow_line(canvas, grd, m_br, orange, False)
+            self._flow_line(canvas, grd_e, grd_m, orange, False, base)
 
-        self._meter(canvas, cx, cy)
+        if not art:
+            self._meter(canvas, cx, cy)
 
         # Readings: white value over a grey label, like the app.
         white = self._gcolor(graphics, "value")
@@ -461,11 +483,18 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         def kw(v: float) -> str:
             return "0kW" if abs(v) < 0.05 else f"{abs(v):.1f}kW"
 
-        self._reading(canvas, graphics, sol[0], 7, kw(solar), "Solar", white)
-        self._reading(canvas, graphics, hom[0], 7, kw(home), "Home", white)
-        self._reading(canvas, graphics, pw[0], h - 13, f"{kw(battery)} {charge:.0f}%",
-                      "Powerwall", white)
-        self._reading(canvas, graphics, grd[0], h - 13, kw(grid), "Grid", white)
+        if art:
+            self._reading(canvas, graphics, round(w * 0.47), 6, kw(solar), "Solar", white)
+            self._reading(canvas, graphics, round(w * 0.85), round(h * 0.50), kw(home), "Home", white)
+            self._reading(canvas, graphics, round(w * 0.17), round(h * 0.80),
+                          kw(battery), f"PW {charge:.0f}%", white)
+            self._reading(canvas, graphics, round(w * 0.81), round(h * 0.80), kw(grid), "Grid", white)
+        else:
+            self._reading(canvas, graphics, sol_t[0], 7, kw(solar), "Solar", white)
+            self._reading(canvas, graphics, hom_t[0], 7, kw(home), "Home", white)
+            self._reading(canvas, graphics, pw_t[0], h - 13,
+                          f"{kw(battery)} {charge:.0f}%", "Powerwall", white)
+            self._reading(canvas, graphics, grd_t[0], h - 13, kw(grid), "Grid", white)
         return None
 
     def _reading(self, canvas, graphics, cx, value_y, value, label, vcolor) -> None:
@@ -475,9 +504,10 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
                             value_y + self._label_font["size"]["height"] + 1,
                             self._gcolor(graphics, "label"), center_x=cx)
 
-    def _flow_line(self, canvas, a, b, color, active: bool) -> None:
-        """Draw a faint line from a to b; when active, animate brighter dots
-        moving from a toward b along it."""
+    def _flow_line(self, canvas, a, b, color, active: bool, base: bool = True) -> None:
+        """Animate dots from a toward b. When ``base`` is set, also draw a faint
+        static line underneath (skipped when a background image already provides
+        the lead lines, e.g. the Tesla house art)."""
         x0, y0 = a
         x1, y1 = b
         steps = max(abs(x1 - x0), abs(y1 - y0))
@@ -485,9 +515,10 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             return
         pts = [(round(x0 + (x1 - x0) * i / steps), round(y0 + (y1 - y0) * i / steps))
                for i in range(steps + 1)]
-        idle = self._color("flow_idle")
-        for x, y in pts:
-            self._px(canvas, x, y, idle)
+        if base:
+            idle = self._color("flow_idle")
+            for x, y in pts:
+                self._px(canvas, x, y, idle)
         if not active:
             return
         spacing = 4
@@ -505,6 +536,78 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             self._px(canvas, cx - 3, y, c)
             self._px(canvas, cx + 3, y, c)
         self._px(canvas, cx, cy, c)
+
+    @staticmethod
+    def _pip(x, y, poly) -> bool:
+        """Point-in-polygon (ray casting)."""
+        inside = False
+        n = len(poly)
+        j = n - 1
+        for i in range(n):
+            xi, yi = poly[i]
+            xj, yj = poly[j]
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-9) + xi):
+                inside = not inside
+            j = i
+        return inside
+
+    def _build_house(self) -> list:
+        """A dim isometric solar-roof house, matching the Tesla app's
+        composition: solar roof up top, walls below, drawn once and blitted
+        behind the energy-flow readings. Colours are deliberately dark so the
+        readings and flow lines stay legible on top."""
+        w, h = self.width, self.height
+        sx, sy = w / 128.0, h / 64.0
+
+        def P(x, y):
+            return (x * sx, y * sy)
+
+        # Isometric cuboid: roof rhombus on top, two wall faces below.
+        A, B, F, L = P(64, 9), P(105, 26), P(64, 43), P(23, 26)   # roof corners
+        B2, F2, L2 = P(105, 41), P(64, 58), P(23, 41)             # wall bottoms
+        roof, rface, lface = [A, B, F, L], [F, B, B2, F2], [L, F, F2, L2]
+
+        px: dict = {}
+
+        def fill(poly, color):
+            xs = [p[0] for p in poly]
+            ys = [p[1] for p in poly]
+            for yy in range(int(min(ys)), int(max(ys)) + 1):
+                for xx in range(int(min(xs)), int(max(xs)) + 1):
+                    if self._pip(xx, yy, poly):
+                        px[(xx, yy)] = color
+
+        fill(rface, (28, 34, 50))   # right wall (lighter)
+        fill(lface, (18, 24, 38))   # left wall (shaded)
+        fill(roof, (13, 19, 33))    # solar roof base
+
+        def lerp(p, q, t):
+            return (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
+
+        def line(p, q, color):
+            steps = int(max(abs(q[0] - p[0]), abs(q[1] - p[1]))) or 1
+            for i in range(steps + 1):
+                pt = lerp(p, q, i / steps)
+                key = (round(pt[0]), round(pt[1]))
+                if key in px:
+                    px[key] = color
+
+        # Solar panel grid on the roof (lines parallel to each pair of edges).
+        grid_c = (40, 54, 78)
+        for t in (0.2, 0.4, 0.6, 0.8):
+            line(lerp(A, B, t), lerp(L, F, t), grid_c)
+        for t in (0.33, 0.66):
+            line(lerp(A, L, t), lerp(B, F, t), grid_c)
+
+        # A couple of lit windows on the right wall.
+        win = (84, 88, 62)
+        for (a, b) in ((P(73, 46), P(80, 53)), (P(86, 43), P(93, 50))):
+            for yy in range(int(a[1]), int(b[1]) + 1):
+                for xx in range(int(a[0]), int(b[0]) + 1):
+                    if (xx, yy) in px:
+                        px[(xx, yy)] = win
+
+        return [(x, y, c) for (x, y), c in px.items()]
 
     # ── Text helper ──────────────────────────────────────────────────────────
 
