@@ -50,6 +50,11 @@ _DEFAULTS = {
     "solar_value": (255, 200, 40),
     "home_value": (90, 170, 255),
     "battery_value": (120, 220, 120),
+    # Energy-flow layout (Tesla-app style)
+    "flow": (80, 220, 100),        # solar / battery / clean power
+    "flow_grid": (235, 150, 40),   # power drawn from the grid
+    "flow_idle": (45, 45, 45),     # inactive line
+    "meter": (150, 150, 150),      # centre meter icon
 }
 
 
@@ -401,76 +406,105 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
     # ── Powerwall layout ─────────────────────────────────────────────────────
 
     def _render_powerwall(self, data, canvas, graphics, scroll_pos) -> Optional[int]:
+        """Tesla-app-style energy-flow screen: four corner readings around a
+        centre meter, joined by flow lines that animate toward whatever is
+        consuming power. Green = solar/battery/clean, orange = grid."""
         ents = self.config.entities
         ps = self.config.power_scale
 
-        solar_kw = data.get_float(ents.get("solar", "")) * ps
-        home_kw = data.get_float(ents.get("home", "")) * ps
-        grid_kw = data.get_float(ents.get("grid", "")) * ps
-        battery_kw = data.get_float(ents.get("battery", "")) * ps
-        charge_pct = data.get_float(ents.get("charge", ""))
+        solar = data.get_float(ents.get("solar", "")) * ps
+        home = data.get_float(ents.get("home", "")) * ps
+        grid = data.get_float(ents.get("grid", "")) * ps
+        battery = data.get_float(ents.get("battery", "")) * ps
+        charge = data.get_float(ents.get("charge", ""))
 
-        # Tesla integration reports grid_power positive when importing.
-        is_importing = grid_kw > 0.05
-        is_charging = battery_kw < -0.05
-        is_discharging = battery_kw > 0.05
+        # Sign conventions: grid +import, battery -charging / +discharging.
+        importing = grid > 0.05
+        exporting = grid < -0.05
+        charging = battery < -0.05
+        discharging = battery > 0.05
 
-        # Geometry scales to panel width; three columns centred on these x's.
         w, h = self.width, self.height
-        solar_cx = w // 6
-        home_cx = w // 2
-        batt_cx = w - w // 6
-        icon_y = 1
-        icon_size = min(18, h // 3)
+        cx, cy = w // 2, h // 2
+        green = self._color("flow")
+        orange = self._color("flow_grid")
 
-        self._sun(canvas, graphics, solar_cx, icon_y + icon_size // 2, icon_size // 2)
-        self._house(canvas, graphics, home_cx, icon_y, icon_size)
+        # Where each reading's flow line attaches, and the meter's corners.
+        sol = (round(w * 0.27), round(h * 0.30))
+        hom = (round(w * 0.73), round(h * 0.30))
+        pw = (round(w * 0.27), round(h * 0.70))
+        grd = (round(w * 0.73), round(h * 0.70))
+        m_tl, m_tr = (cx - 3, cy - 3), (cx + 3, cy - 3)
+        m_bl, m_br = (cx - 3, cy + 3), (cx + 3, cy + 3)
 
-        if is_importing:
-            self._bolt(canvas, graphics, batt_cx, icon_y, icon_size)
+        # Flow lines (dots animate from the first point toward the second).
+        self._flow_line(canvas, sol, m_tl, green, solar > 0.05)
+        self._flow_line(canvas, m_tr, hom, orange if importing else green, home > 0.05)
+        if charging:
+            self._flow_line(canvas, m_bl, pw, green, True)
+        elif discharging:
+            self._flow_line(canvas, pw, m_bl, green, True)
         else:
-            self._battery(canvas, graphics, batt_cx, icon_y, icon_size,
-                          charge_pct, is_charging, is_discharging)
-
-        # Flow dots between columns
-        flow_y = icon_y + icon_size // 2
-        gap_l = (solar_cx + home_cx) // 2
-        gap_r = (home_cx + batt_cx) // 2
-        if solar_kw > 0.05:
-            self._flow(canvas, gap_l - 8, 16, flow_y, self._color("solar_flow_active"), True)
+            self._flow_line(canvas, pw, m_bl, green, False)
+        if importing:
+            self._flow_line(canvas, grd, m_br, orange, True)
+        elif exporting:
+            self._flow_line(canvas, m_br, grd, green, True)
         else:
-            self._flow_idle(canvas, gap_l - 8, 16, flow_y, self._color("solar_flow_idle"))
-        if is_importing:
-            self._flow(canvas, gap_r - 8, 16, flow_y, self._color("grid_flow"), False)
-        elif is_discharging:
-            self._flow(canvas, gap_r - 8, 16, flow_y, self._color("battery_flow"), False)
+            self._flow_line(canvas, grd, m_br, orange, False)
 
-        # Values row
-        val_y = icon_y + icon_size + self._value_font["size"]["height"] + 1
-        self._draw_centered(canvas, graphics, f"{solar_kw:.1f}kW", self._value_font,
-                            val_y, self._gcolor(graphics, "solar_value"), center_x=solar_cx)
-        self._draw_centered(canvas, graphics, f"{home_kw:.1f}kW", self._value_font,
-                            val_y, self._gcolor(graphics, "home_value"), center_x=home_cx)
-        if is_importing:
-            self._draw_centered(canvas, graphics, f"{grid_kw:.1f}kW", self._value_font,
-                                val_y, self._gcolor(graphics, "grid_flow"), center_x=batt_cx)
-        else:
-            self._draw_centered(canvas, graphics, f"{int(round(charge_pct))}%", self._value_font,
-                                val_y, self._gcolor(graphics, "battery_value"), center_x=batt_cx)
+        self._meter(canvas, cx, cy)
 
-        # Optional scrolling footer: solar produced today
-        solar_today_id = ents.get("solar_today", "")
-        if solar_today_id and data.has(solar_today_id):
-            kwh = data.get_float(solar_today_id)
-            text = f"Solar Power Generated today: {kwh:.1f} kWh"
-            sy = h - 1
-            return scrolling_text(
-                canvas, graphics, 0, sy, w, self._scroll_font,
-                self._gcolor(graphics, "solar_value"),
-                self._gcolor(graphics, "background"),
-                text, scroll_pos, center=False, force_scroll=True,
-            )
+        # Readings: white value over a grey label, like the app.
+        white = self._gcolor(graphics, "value")
+
+        def kw(v: float) -> str:
+            return "0kW" if abs(v) < 0.05 else f"{abs(v):.1f}kW"
+
+        self._reading(canvas, graphics, sol[0], 7, kw(solar), "Solar", white)
+        self._reading(canvas, graphics, hom[0], 7, kw(home), "Home", white)
+        self._reading(canvas, graphics, pw[0], h - 13, f"{kw(battery)} {charge:.0f}%",
+                      "Powerwall", white)
+        self._reading(canvas, graphics, grd[0], h - 13, kw(grid), "Grid", white)
         return None
+
+    def _reading(self, canvas, graphics, cx, value_y, value, label, vcolor) -> None:
+        self._draw_centered(canvas, graphics, value, self._value_font, value_y,
+                            vcolor, center_x=cx)
+        self._draw_centered(canvas, graphics, label, self._label_font,
+                            value_y + self._label_font["size"]["height"] + 1,
+                            self._gcolor(graphics, "label"), center_x=cx)
+
+    def _flow_line(self, canvas, a, b, color, active: bool) -> None:
+        """Draw a faint line from a to b; when active, animate brighter dots
+        moving from a toward b along it."""
+        x0, y0 = a
+        x1, y1 = b
+        steps = max(abs(x1 - x0), abs(y1 - y0))
+        if steps <= 0:
+            return
+        pts = [(round(x0 + (x1 - x0) * i / steps), round(y0 + (y1 - y0) * i / steps))
+               for i in range(steps + 1)]
+        idle = self._color("flow_idle")
+        for x, y in pts:
+            self._px(canvas, x, y, idle)
+        if not active:
+            return
+        spacing = 4
+        head = int(self._phase) % spacing
+        for i, (x, y) in enumerate(pts):
+            if (i - head) % spacing == 0:
+                self._px(canvas, x, y, color)
+
+    def _meter(self, canvas, cx, cy) -> None:
+        c = self._color("meter")
+        for x in range(cx - 3, cx + 4):
+            self._px(canvas, x, cy - 4, c)
+            self._px(canvas, x, cy + 4, c)
+        for y in range(cy - 4, cy + 5):
+            self._px(canvas, cx - 3, y, c)
+            self._px(canvas, cx + 3, y, c)
+        self._px(canvas, cx, cy, c)
 
     # ── Text helper ──────────────────────────────────────────────────────────
 
@@ -484,90 +518,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         x = center_text_position(text, center_x, char_w)
         graphics.DrawText(canvas, font["font"], x, baseline_y, color, text)
 
-    # ── Icon primitives (code-drawn, scale with size) ────────────────────────
-
-    def _sun(self, canvas, graphics, cx, cy, r):
-        c = self._gcolor(graphics, "solar_icon")
-        rgb = (c.red, c.green, c.blue)
-        for dy in range(-1, 2):
-            for dx in range(-1, 2):
-                self._px(canvas, cx + dx, cy + dy, rgb)
-        for i in range(r - 2, r + 1):
-            self._px(canvas, cx, cy - i, rgb)
-            self._px(canvas, cx, cy + i, rgb)
-            self._px(canvas, cx - i, cy, rgb)
-            self._px(canvas, cx + i, cy, rgb)
-        for d in (r - 2, r - 1):
-            if d > 0:
-                self._px(canvas, cx - d, cy - d, rgb)
-                self._px(canvas, cx + d, cy - d, rgb)
-                self._px(canvas, cx - d, cy + d, rgb)
-                self._px(canvas, cx + d, cy + d, rgb)
-
-    def _house(self, canvas, graphics, cx, iy, size):
-        c = self._gcolor(graphics, "home_icon")
-        half = size // 2
-        peak_x = cx
-        eave_y = iy + half
-        base_y = iy + size - 1
-        graphics.DrawLine(canvas, peak_x, iy, cx - half, eave_y, c)
-        graphics.DrawLine(canvas, peak_x, iy, cx + half, eave_y, c)
-        graphics.DrawLine(canvas, cx - half, eave_y, cx + half, eave_y, c)
-        graphics.DrawLine(canvas, cx - half + 1, eave_y, cx - half + 1, base_y, c)
-        graphics.DrawLine(canvas, cx + half - 1, eave_y, cx + half - 1, base_y, c)
-        graphics.DrawLine(canvas, cx - half + 1, base_y, cx + half - 1, base_y, c)
-
-    def _battery(self, canvas, graphics, cx, iy, size, charge_pct, charging, discharging):
-        c = self._gcolor(graphics, "battery_icon")
-        half = max(4, size // 2)
-        left = cx - half // 2
-        right = cx + half // 2
-        top = iy + 2
-        bottom = iy + size - 1
-        # terminal
-        graphics.DrawLine(canvas, cx - 1, iy, cx + 1, iy, c)
-        # body
-        graphics.DrawLine(canvas, left, top, right, top, c)
-        graphics.DrawLine(canvas, left, bottom, right, bottom, c)
-        graphics.DrawLine(canvas, left, top, left, bottom, c)
-        graphics.DrawLine(canvas, right, top, right, bottom, c)
-        # fill
-        body_h = bottom - top - 1
-        fill_h = int(round(max(0.0, min(100.0, charge_pct)) / 100.0 * body_h))
-        fill_top = bottom - fill_h
-        if charge_pct > 50:
-            fill = self._color("battery_fill_high")
-        elif charge_pct > 25:
-            fill = self._color("battery_fill_mid")
-        else:
-            fill = self._color("battery_fill_low")
-        wave_row = -1
-        if (charging or discharging) and fill_h > 0:
-            step = self._phase // 3 % fill_h
-            wave_row = (bottom - 1 - step) if charging else (fill_top + step)
-        fill_c = graphics.Color(*fill)
-        wave_c = self._gcolor(graphics, "battery_wave")
-        for row in range(fill_top, bottom):
-            graphics.DrawLine(canvas, left + 1, row, right - 1, row,
-                              wave_c if row == wave_row else fill_c)
-
-    def _bolt(self, canvas, graphics, cx, iy, size):
-        c = self._gcolor(graphics, "grid_icon")
-        graphics.DrawLine(canvas, cx + 2, iy, cx - 2, iy + size // 2, c)
-        graphics.DrawLine(canvas, cx - 2, iy + size // 2, cx + 2, iy + size // 2, c)
-        graphics.DrawLine(canvas, cx + 2, iy + size // 2, cx - 2, iy + size - 1, c)
-
-    def _flow(self, canvas, x_start, width, y, color, rightward):
-        spacing, n = 4, width // 4
-        for dot in range(n):
-            pos = (self._phase // 2 + dot * spacing) % width
-            px = x_start + (pos if rightward else width - 1 - pos)
-            for dy in (-1, 0, 1):
-                self._px(canvas, px, y + dy, color)
-
-    def _flow_idle(self, canvas, x_start, width, y, color):
-        for pos in range(1, width, 4):
-            self._px(canvas, x_start + pos, y, color)
+    # ── Pixel primitive ──────────────────────────────────────────────────────
 
     def _px(self, canvas, x, y, rgb):
         if 0 <= x < self.width and 0 <= y < self.height:
