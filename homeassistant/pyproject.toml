@@ -26,3 +26,4 @@ mlb_led_scoreboard_homeassistant = ["icons/*.png"]
 "homeassistant" = "mlb_led_scoreboard_homeassistant:load"
 "tesla" = "mlb_led_scoreboard_homeassistant:load"
 "golf" = "mlb_led_scoreboard_homeassistant:load"
+"pool" = "mlb_led_scoreboard_homeassistant:load"
