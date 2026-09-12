@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout Editor — MLB LED Scoreboard</title>
+<link rel="stylesheet" href="/layout.css">
+</head>
+<body>
+
+<header>
+  <h1>Layout</h1>
+  <label>Board
+    <select id="size"></select>
+  </label>
+  <label>Screen
+    <select id="screen"></select>
+  </label>
+  <label>Zoom
+    <select id="zoom">
+      <option value="4">4&times;</option>
+      <option value="6">6&times;</option>
+      <option value="8" selected>8&times;</option>
+      <option value="12">12&times;</option>
+    </select>
+  </label>
+  <label class="toggle"><input type="checkbox" id="show-boxes" checked> Boxes</label>
+  <label class="toggle"><input type="checkbox" id="show-grid"> Grid</label>
+  <span class="spacer"></span>
+  <a href="/">Config editor</a>
+</header>
+
+<p id="banner" class="banner" hidden></p>
+
+<main>
+  <section id="stage-wrap">
+    <div id="stage">
+      <img id="preview" alt="Board preview">
+      <div id="grid" hidden></div>
+      <div id="boxes"></div>
+    </div>
+    <p class="legend">
+      <span class="swatch exact"></span> exact extent
+      <span class="swatch nominal"></span> width varies with live data
+      <span class="swatch anchor"></span> stored (x,&nbsp;y)
+      <span id="readout"></span>
+    </p>
+  </section>
+
+  <aside id="panel">
+    <div id="details" class="empty">Select an element on the board, or from the list below.</div>
+    <h2>Elements on this screen</h2>
+    <ul id="list"></ul>
+  </aside>
+</main>
+
+<script src="/layout.js"></script>
+</body>
+</html>

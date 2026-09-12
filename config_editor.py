@@ -384,6 +384,12 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):
             return self._send_file(STATIC_DIR / "editor.html", "text/html; charset=utf-8")
+        if path in ("/layout", "/layout.html"):
+            return self._send_file(STATIC_DIR / "layout.html", "text/html; charset=utf-8")
+        if path == "/layout.js":
+            return self._send_file(STATIC_DIR / "layout.js", "application/javascript")
+        if path == "/layout.css":
+            return self._send_file(STATIC_DIR / "layout.css", "text/css")
         if path == "/editor.js":
             return self._send_file(STATIC_DIR / "editor.js", "application/javascript")
         if path == "/editor.css":
@@ -438,6 +444,30 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"error": str(exc)}, 400)
             except Exception as exc:
                 LOGGER.exception("preview render failed")
+                return self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+        if path == "/api/layout/elements":
+            # Boxes are computed server-side, beside the anchor metadata and the
+            # font metrics. A second copy of the anchor rules in JS would drift.
+            import layout_preview
+
+            query = parse_qs(urlparse(self.path).query)
+            size = (query.get("size") or ["w128h64"])[0]
+            screen = (query.get("screen") or ["live"])[0]
+            try:
+                m = re.match(r"^w(\d+)h(\d+)$", size)
+                return self._send_json(
+                    {
+                        "size": size,
+                        "screen": screen,
+                        "width": int(m.group(1)) if m else None,
+                        "height": int(m.group(2)) if m else None,
+                        "elements": layout_preview.elements(size, screen),
+                    }
+                )
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, 400)
+            except Exception as exc:
+                LOGGER.exception("layout elements failed")
                 return self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 500)
         if path == "/api/line_score":
             return self._send_json(get_line_score())
