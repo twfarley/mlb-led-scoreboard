@@ -305,7 +305,8 @@
       "properties": {
         "x":                     { "type": "integer" },
         "y":                     { "type": "integer" },
-        "innings_until_display": { "type": "integer" }
+        "innings_until_display": { "type": "integer" },
+        "font_name":             { "$ref": "#/$defs/font_name" }
       }
     },
     "pregame": {

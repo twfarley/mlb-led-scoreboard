@@ -139,9 +139,9 @@
     "final.nohit_text":                { "anchor": "left",   "extent": "text" },
     "final.scrolling_text":            { "anchor": "left",   "extent": "scroll" },
 
-    "inning.number":                   { "anchor": "left", "extent": "text" },
-    "inning.number.nohit":             { "anchor": "left", "extent": "text", "note": "alternate position used only during a no-hitter" },
-    "inning.number.perfect_game":      { "anchor": "left", "extent": "text", "note": "alternate position used only during a perfect game" },
+    "inning.number":                   { "anchor": "right", "extent": "text", "note": "__render_inning_number draws at x - len(number)*font_width, so x is the RIGHTMOST pixel" },
+    "inning.number.nohit":             { "anchor": "right", "extent": "text", "note": "alternate position used only during a no-hitter; x is the rightmost pixel" },
+    "inning.number.perfect_game":      { "anchor": "right", "extent": "text", "note": "alternate position used only during a perfect game; x is the rightmost pixel" },
     "inning.arrow.up":                 { "anchor": "left", "extent": "arrow_up",   "note": "size comes from the parent inning.arrow" },
     "inning.arrow.down":               { "anchor": "left", "extent": "arrow_down", "note": "size comes from the parent inning.arrow" },
     "inning.break.number":             { "anchor": "left", "extent": "text" },

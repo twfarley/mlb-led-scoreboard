@@ -170,14 +170,25 @@ class TestScreenVariants(unittest.TestCase):
             self.assertEqual(f"w{image.width}h{image.height}", size)
 
     def test_nohitter_variant_swaps_in_the_alternate_positions(self):
+        """The state resolution, not the values.
+
+        layout.coords() substitutes the `nohit` sub-dict for its parent when that
+        state is active, so an element must resolve through it and report where an
+        edit should be written. Whether the alternate happens to sit somewhere
+        different is a layout decision -- on w128h64 the alternates are now the
+        same as the normal positions, because moving them was what put the inning
+        number on the 2B diamond.
+        """
         import layout_preview
 
-        normal = {e["keypath"]: e for e in layout_preview.elements("w128h64", "live")}
-        # layout.coords() returns the `nohit` sub-dict when the state is active,
-        # so the alternate position must actually differ from the normal one.
-        coords = layout_preview._coords_for("w128h64")
-        self.assertNotEqual(coords["batter_count"]["nohit"], {k: coords["batter_count"][k] for k in ("x", "y")})
-        self.assertIn("nohitter", normal)
+        live = {e["keypath"]: e for e in layout_preview.elements("w128h64", "live")}
+        nohit = {e["keypath"]: e for e in layout_preview.elements("w128h64", "live_nohitter")}
+
+        self.assertEqual(live["batter_count"]["edit_keypath"], "batter_count")
+        self.assertEqual(nohit["batter_count"]["edit_keypath"], "batter_count.nohit")
+        self.assertEqual(nohit["inning.number"]["edit_keypath"], "inning.number.nohit")
+        # The banner only exists in these states.
+        self.assertIn("nohitter", nohit)
 
     def test_nohitter_variant_forces_a_late_inning(self):
         """The NO-HITTER banner is gated on the inning, so a 1st-inning fixture

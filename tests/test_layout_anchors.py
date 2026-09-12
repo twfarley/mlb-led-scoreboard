@@ -108,7 +108,17 @@ class TestLayoutAnchors(unittest.TestCase):
                 "news.wind_dir",
             },
         )
-        self.assertEqual(by_anchor.get("right", set()), {"teams.line_score.away", "teams.line_score.home"})
+        self.assertEqual(
+            by_anchor.get("right", set()),
+            {
+                "teams.line_score.away",
+                "teams.line_score.home",
+                # __render_inning_number subtracts the text width from x.
+                "inning.number",
+                "inning.number.nohit",
+                "inning.number.perfect_game",
+            },
+        )
         self.assertEqual(by_anchor.get("board-right", set()), {"atbat.batter_stats"})
 
 
