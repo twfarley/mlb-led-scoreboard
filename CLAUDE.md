@@ -35,8 +35,9 @@ here. Pushing such a branch mails a build result to the whole org
 `feature/config-web-editor @ 6f80589` — and it is pure noise for maintainers who did
 not ask for it.
 
-`feature/config-web-editor` is the head of **[PR #765](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard/pull/765)**.
-Do not push it while that PR is open; put the work on `master` or another branch.
+`feature/config-web-editor` was the head of PR #765, which is now **closed**, so no
+branch here currently feeds upstream CI and the blocked list is empty. Add to it
+whenever you open a new upstream PR.
 
 A `pre-push` hook enforces this, and also refuses `upstream` outright. Hooks are not
 tracked by git, so **a fresh clone starts unprotected** — run:
@@ -45,9 +46,9 @@ tracked by git, so **a fresh clone starts unprotected** — run:
 tools/install-git-hooks.sh
 ```
 
-It reads the blocked list from `git config --get-all fork.noPushBranches`, so add a
-branch when you open a new upstream PR. `git push --no-verify` overrides it, which is
-the right escape hatch when you genuinely mean to update a PR.
+It reads the blocked list from `git config --get-all fork.noPushBranches`; edit the
+`BLOCKED` line in that script and re-run to add one. `git push --no-verify` overrides
+it, which is the right escape hatch when you genuinely mean to update a PR.
 
 Note that pushes to this fork's own `master` are fine: only `readme-toc.yml` runs on
 `push`, and that executes in the fork and notifies nobody but you.

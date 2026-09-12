@@ -76,7 +76,7 @@
       "teams.",
       "network."
     ],
-    "live_break": ["inning.break.", "teams.", "network."],
+    "live_break": ["inning.break.", "inning.number", "inning.arrow", "teams.", "network."],
     "live_nohitter": [
       "atbat.",
       "bases.",
