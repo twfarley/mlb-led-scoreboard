@@ -67,23 +67,28 @@ class TestAbsChallengeIndicators(unittest.TestCase):
         image = render_with_challenges(2, 2)
         # __draw_challenge_square fills x .. x + size - 1.
         expected = set(range(SQUARE_X0, SQUARE_X0 + SQUARE_SIZE))
-        for side, rows in (("away", self.coords["away"]["squares"]), ("home", self.coords["home"]["squares"])):
-            for top in rows:
-                band = range(top, top + SQUARE_SIZE)
+        for side in ("away", "home"):
+            height = self.coords[side].get("height", SQUARE_SIZE)
+            for top in self.coords[side]["squares"]:
+                band = range(top, top + height)
                 drawn = {x for x in lit_columns(image, band) if x in STRIP}
                 self.assertEqual(drawn, expected, f"{side} square at y={top} should occupy exactly {expected}")
 
     def test_nothing_is_drawn_at_the_old_right_edge_position(self):
-        """They used to sit at x 125..127. The outs squares live out there too, so
-        this only checks the challenge rows, which the outs never touch."""
+        """They used to sit at x 125..127.
+
+        Checked on the away bars only. The home bars now run down to row 63 and
+        cross the outs squares (y 46..50, x 105..127), and a pixel test cannot tell
+        an outs pixel from a challenge pixel -- an earlier version of this assertion
+        failed for exactly that reason once the marks became bars.
+        """
         image = render_with_challenges(2, 2)
-        for rows in (self.coords["away"]["squares"], self.coords["home"]["squares"]):
-            for top in rows:
-                band = range(top, top + SQUARE_SIZE)
-                self.assertFalse(
-                    {x for x in lit_columns(image, band) if x >= 125},
-                    f"something is still drawn near x=125 on the challenge row y={top}",
-                )
+        for top in self.coords["away"]["squares"]:
+            band = range(top, top + self.coords["away"].get("height", SQUARE_SIZE))
+            self.assertFalse(
+                {x for x in lit_columns(image, band) if x >= 125},
+                f"something is still drawn near x=125 on the challenge row y={top}",
+            )
 
     def test_a_spent_challenge_dims_rather_than_disappearing(self):
         """Both squares are always drawn; only the colour changes, so the count of
@@ -91,7 +96,7 @@ class TestAbsChallengeIndicators(unittest.TestCase):
         full = render_with_challenges(2, 2)
         spent = render_with_challenges(0, 0)
         rows = self.coords["away"]["squares"]
-        band = range(rows[0], rows[0] + SQUARE_SIZE)
+        band = range(rows[0], rows[0] + self.coords["away"].get("height", SQUARE_SIZE))
         self.assertEqual(
             {x for x in lit_columns(full, band) if x in STRIP},
             {x for x in lit_columns(spent, band) if x in STRIP},

@@ -83,14 +83,14 @@
     },
     "number": {
       "x": 65,
-      "y": 48,
+      "y": 43,
       "nohit": {
         "x": 65,
-        "y": 48
+        "y": 43
       },
       "perfect_game": {
         "x": 65,
-        "y": 48
+        "y": 43
       },
       "font_name": "5x7"
     },
@@ -168,8 +168,7 @@
       "x": 55,
       "y": 61,
       "width": 73,
-      "enabled": true,
-      "situation_fallback": true
+      "enabled": true
     },
     "loop": 68,
     "strikeout": {
@@ -343,17 +342,19 @@
       "away": {
         "x": 53,
         "size": 2,
+        "height": 8,
         "squares": [
-          32,
-          37
+          29,
+          38
         ]
       },
       "home": {
         "x": 53,
         "size": 2,
+        "height": 8,
         "squares": [
-          52,
-          57
+          47,
+          56
         ]
       }
     }

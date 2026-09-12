@@ -115,9 +115,14 @@
       "properties": {
         "x":       { "type": "integer" },
         "size":    { "type": "integer", "default": 2, "minimum": 1 },
+        "height":  {
+          "type": "integer",
+          "description": "Height of each mark. Omit for a square of `size`; set it to run the marks down the depth of the team's colour band as bars.",
+          "minimum": 1
+        },
         "squares": {
           "type": "array",
-          "description": "Y positions for each challenge square (two = colon-style indicator). Squares are filled from the bottom up as challenges remain.",
+          "description": "Y position of the TOP of each challenge mark (two = colon-style indicator). Filled from the bottom up as challenges remain.",
           "items": { "type": "integer" },
           "minItems": 1
         }
@@ -281,8 +286,7 @@
             "x":                  { "type": "integer" },
             "y":                  { "type": "integer" },
             "width":              { "type": "integer" },
-            "enabled":            { "type": "boolean" },
-            "situation_fallback": { "type": "boolean" }
+            "enabled":            { "type": "boolean" }
           }
         },
         "loop":        { "type": "integer" },

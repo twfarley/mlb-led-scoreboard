@@ -46,11 +46,10 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
         _render_bases(canvas, layout, colors, scoreboard.bases, scoreboard.homerun(), (animation_time % 16) // 5)
 
         # Optional full play-by-play line (no-op unless the layout enables it).
-        desc_coords = __optional(layout, "atbat.play_description")
-        description = scoreboard.play_description
-        if desc_coords is not None and not description and desc_coords.get("situation_fallback", False):
-            description = __situation_text(scoreboard)
-        pos = max(pos, __render_play_description(canvas, layout, colors, description))
+        # Game.current_play_description() already picks the best available text --
+        # resolved play, else the pitch just thrown, else the last play held -- so
+        # there is nothing left for the renderer to substitute.
+        pos = max(pos, __render_play_description(canvas, layout, colors, scoreboard.play_description))
 
     else:
         # The inning indicator (number + blinking-half arrow) lives in the corner
@@ -180,20 +179,6 @@ def __render_batter_order(canvas, layout, colors, atbat: AtBat):
     return coords["x"] + len(text) * font["size"]["width"]
 
 
-def __situation_text(scoreboard: Scoreboard) -> str:
-    """Compact 'what's happening' line, used when there's no play description."""
-    half = "Top" if scoreboard.inning.state == Inning.TOP else "Bot"
-    parts = [
-        f"{half} {scoreboard.inning.number}",
-        f"{scoreboard.pitches.balls}-{scoreboard.pitches.strikes}",
-        f"{scoreboard.outs.number} out",
-    ]
-    on = [name for name, runner in zip(("1B", "2B", "3B"), scoreboard.bases.runners) if runner]
-    if on:
-        parts.append("+".join(on))
-    return "  \u00b7  ".join(parts)
-
-
 def __render_play_description(canvas, layout, colors, description):
     """Scroll the full play-by-play description once, then stop blocking rotation."""
     global _play_desc_pos, _play_desc_last, _play_desc_finished
@@ -251,13 +236,19 @@ def __render_batter_text(canvas, layout, colors, atbat: AtBat, text_pos):
     __render_batter_stats(canvas, layout, colors, atbat)
 
     # With a batting-order number the "AB:" label is redundant, so it is
-    # replaced by the number and the name starts after it.
+    # replaced by the number and the name starts after it. The order text ends
+    # with a period, whose right bearing already reads as a gap, so only 1px is
+    # added -- the previous `fw - 2` left a visible 6px hole on a row where every
+    # pixel is a character of the batter's name.
     order_x = __render_batter_order(canvas, layout, colors, atbat)
-    name_x = coords["x"] + fw * 3 if order_x is None else order_x + fw - 2
+    name_x = coords["x"] + fw * 3 if order_x is None else order_x + 1
 
     width = coords["width"]
     if __optional(layout, "atbat.batter_stats") is not None:
-        width = max(10, __batter_stat_positions(layout, atbat)["leftmost_x"] - name_x - 5)
+        # 2px of clearance before the stat column rather than 5, for the same
+        # reason: it buys another character and the period-to-digit transition
+        # there is already legible.
+        width = max(10, __batter_stat_positions(layout, atbat)["leftmost_x"] - name_x - 2)
 
     pos = scrolling_text(
         canvas,

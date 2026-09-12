@@ -36,8 +36,17 @@ SCHEDULE_API_FIELDS = "dates,date,games,status,detailedState,abstractGameState,r
 
 GAME_UPDATE_RATE = 10
 
-# Seconds a finished play's description keeps showing before it clears.
-PLAY_DESCRIPTION_HOLD = 15
+
+def _article(value) -> str:
+    """ "a" or "an" for a speed or a pitch name.
+
+    Spoken aloud, "88" starts with a vowel ("eighty-eight"), so "a 88mph Slider"
+    reads wrong on a line that is otherwise prose.
+    """
+    text = str(value)
+    if text[:1] == "8":
+        return "an"
+    return "an" if text[:1].lower() in "aeiou" else "a"
 
 
 class Game:
@@ -425,23 +434,86 @@ class Game:
             result += "_looking"
         return result
 
-    def current_play_description(self):
-        """Full text of the current play, held briefly after the play clears."""
+    def last_pitch_sentence(self):
+        """The pitch just thrown, in long form.
+
+        "Andrew Sears throws a 94mph Four-Seam Fastball, called strike"
+
+        Built from the last playEvent: `pitchData.startSpeed`,
+        `details.type.description` for the pitch, and `details.description` for the
+        call. All three already come through API_FIELDS.
+        """
         try:
-            desc = (
+            events = self._current_data["liveData"]["plays"].get("currentPlay", {}).get("playEvents", [])
+            event = events[-1]
+        except (KeyError, TypeError, IndexError):
+            return ""
+        if not event.get("isPitch", False):
+            return ""
+
+        details = event.get("details", {})
+        pitch = (details.get("type") or {}).get("description", "")
+        speed = (event.get("pitchData") or {}).get("startSpeed")
+        if not pitch and speed is None:
+            return ""
+
+        sentence = self.pitcher_full_name() or self.pitcher() or "Pitcher"
+        if speed is not None and pitch:
+            sentence += f" throws {_article(round(speed))} {round(speed)}mph {pitch}"
+        elif pitch:
+            sentence += f" throws {_article(pitch)} {pitch}"
+        else:
+            sentence += f" throws {round(speed)}mph"
+
+        call = details.get("description", "")
+        # Skip a call that just repeats the pitch type, and skip "In play, ..." --
+        # the resolved play arrives seconds later and says what actually happened,
+        # so announcing "in play, out(s)" first is both clumsy and redundant.
+        if call and call.lower() != pitch.lower() and not call.lower().startswith("in play"):
+            sentence += f" ({call})"
+        return sentence
+
+    def pitcher_full_name(self):
+        try:
+            pitcher_id = self._current_data["liveData"]["linescore"]["defense"]["pitcher"]["id"]
+            return self.full_name(pitcher_id)
+        except Exception:
+            return ""
+
+    def current_play_description(self):
+        """The most informative text available for what is happening right now.
+
+        Most specific first:
+
+        1. the resolved play, which MLB only populates once an at-bat ends;
+        2. the pitch just thrown, which refreshes every delivery and so covers
+           most of an at-bat;
+        3. the last resolved play we saw, held rather than cleared.
+
+        (3) can be stale -- across a pitching change or between innings there is
+        nothing live to say -- but holding it beats going blank, and it beats the
+        synthetic "Top 3 · 1-2 · 2 out" line it replaced, which restated numbers
+        already on the board.
+        """
+        try:
+            resolved = (
                 self._current_data["liveData"]["plays"].get("currentPlay", {}).get("result", {}).get("description", "")
             )
         except (KeyError, TypeError):
-            desc = ""
-        if desc:
-            self._last_play_description = desc
-            self._last_play_description_time = time.time()
-        if (
-            getattr(self, "_last_play_description", "")
-            and time.time() - getattr(self, "_last_play_description_time", 0) < PLAY_DESCRIPTION_HOLD
-        ):
-            return self._last_play_description
-        return ""
+            resolved = ""
+
+        if resolved:
+            self._last_play_description = resolved
+            return resolved
+
+        # Deliberately does not overwrite the remembered play: once pitches stop
+        # arriving, the last completed play is the more useful thing to fall back
+        # to than the last pitch of an at-bat that has since ended.
+        pitch = self.last_pitch_sentence()
+        if pitch:
+            return pitch
+
+        return getattr(self, "_last_play_description", "")
 
     def game_recap_blurb(self):
         return self._blurb_data.recap()
