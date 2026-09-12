@@ -341,16 +341,16 @@
     },
     "abs_challenges": {
       "away": {
-        "x": 125,
-        "size": 3,
+        "x": 53,
+        "size": 2,
         "squares": [
           32,
           37
         ]
       },
       "home": {
-        "x": 125,
-        "size": 3,
+        "x": 53,
+        "size": 2,
         "squares": [
           52,
           57
