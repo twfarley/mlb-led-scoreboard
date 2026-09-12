@@ -125,7 +125,8 @@
       "name": {
         "away": { "x": 4, "y": 8  },
         "home": { "x": 4, "y": 18 },
-        "full": true
+        "full": true,
+        "max_width": 51
       },
       "accent": {
         "away": { "width": 2, "height": 10, "x": 0, "y": 0  },

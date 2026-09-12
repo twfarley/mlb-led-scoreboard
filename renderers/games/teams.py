@@ -64,6 +64,21 @@ def can_use_full_team_names(layout, teams):
     if not layout.coords("teams.name").get("full", False):
         return False
 
+    # Setting for abbreviating if the full name is too wide for the space before
+    # the line score. Nothing clips team names -- __render_team_text is a plain
+    # DrawText -- so on a narrow banner a long name simply runs into the score.
+    # w128h32 has 51px before it, which "Brewers" fits and "Nationals" does not.
+    # Applied to both teams together, like the line-score rule below, so the two
+    # rows never disagree about which form they are using.
+    max_width = layout.coords("teams.name").get("max_width")
+    if max_width:
+        try:
+            font_width = layout.font("teams.name.away")["size"]["width"]
+        except Exception:
+            font_width = None
+        if font_width and any(len(team.name) * font_width > max_width for team in teams):
+            return False
+
     # Setting for abbreviating if a line score contains more than 3 total digits (i.e. R, H, or E >= 10)
     if layout.coords("teams.line_score").get("shorten_team_name_on_high_line_score", False):
 

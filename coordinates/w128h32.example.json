@@ -290,7 +290,8 @@
         "x": 4,
         "y": 18
       },
-      "full": true
+      "full": true,
+      "max_width": 51
     },
     "accent": {
       "away": {

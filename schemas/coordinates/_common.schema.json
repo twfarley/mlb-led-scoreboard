@@ -382,6 +382,10 @@
             "away":      { "$ref": "#/$defs/named_point" },
             "home":      { "$ref": "#/$defs/named_point" },
             "full":      { "type": "boolean" },
+            "max_width": {
+              "description": "Pixels available for a full team name before it would collide with the line score. Names wider than this fall back to the abbreviation. Omit for no limit.",
+              "type": "integer"
+            },
             "font_name": { "$ref": "#/$defs/font_name" }
           },
           "required": ["away", "home"]
