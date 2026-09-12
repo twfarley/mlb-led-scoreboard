@@ -75,14 +75,10 @@ class HomeAssistantData(PluginData):
             # Network hiccup (timeout, connection refused, ...). Keep showing
             # the last-known values rather than flipping to "unavailable", and
             # log a one-line warning instead of a full stack trace.
-            LOGGER.warning(
-                "[HOMEASSISTANT] Fetch from %s failed: %s", self.config.base_url, e
-            )
+            LOGGER.warning("[HOMEASSISTANT] Fetch from %s failed: %s", self.config.base_url, e)
             return UpdateStatus.FAIL
         except Exception:
-            LOGGER.exception(
-                "[HOMEASSISTANT] Failed to fetch states from %s", self.config.base_url
-            )
+            LOGGER.exception("[HOMEASSISTANT] Failed to fetch states from %s", self.config.base_url)
             self.available = False
             return UpdateStatus.FAIL
 
@@ -100,9 +96,7 @@ class HomeAssistantData(PluginData):
 
     def _fetch_one(self, entity_id: str) -> None:
         url = f"{self.config.base_url}/api/states/{entity_id}"
-        resp = self._session.get(
-            url, verify=self.config.verify_ssl, timeout=self.config.timeout
-        )
+        resp = self._session.get(url, verify=self.config.verify_ssl, timeout=self.config.timeout)
         if resp.status_code == 404:
             LOGGER.warning("[HOMEASSISTANT] Entity not found: %s", entity_id)
             return

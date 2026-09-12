@@ -15,7 +15,7 @@ adding a ``homeassistant.*`` key to ``colors/scoreboard.json``.
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 import bullpen.api as api
 from bullpen.logging import LOGGER
@@ -51,10 +51,10 @@ _DEFAULTS = {
     "home_value": (90, 170, 255),
     "battery_value": (120, 220, 120),
     # Energy-flow layout (Tesla-app style)
-    "flow": (80, 220, 100),        # solar / battery / clean power
-    "flow_grid": (235, 150, 40),   # power drawn from the grid
-    "flow_idle": (45, 45, 45),     # inactive line
-    "meter": (150, 150, 150),      # centre meter icon
+    "flow": (80, 220, 100),  # solar / battery / clean power
+    "flow_grid": (235, 150, 40),  # power drawn from the grid
+    "flow_idle": (45, 45, 45),  # inactive line
+    "meter": (150, 150, 150),  # centre meter icon
 }
 
 
@@ -87,9 +87,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         self._bg_pixels: list = self._load_background()
         # Code-drawn house behind the powerwall energy-flow screen, used only
         # when no background image is configured. Precomputed once.
-        self._house_pixels: list = (
-            self._build_house() if config.layout_mode == "powerwall" else []
-        )
+        self._house_pixels: list = self._build_house() if config.layout_mode == "powerwall" else []
 
     def _load_background(self) -> list:
         name = self.config.background_image
@@ -106,12 +104,16 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             return []
 
         opacity = max(0.0, min(1.0, self.config.background_opacity))
-        img = Image.open(path).convert("RGBA").resize((self.width, self.height), Image.LANCZOS)
+        img = (
+            Image.open(path)
+            .convert("RGBA")
+            .resize((self.width, self.height), Image.LANCZOS)  # type: ignore[attr-defined]
+        )
         pixels = []
         for y in range(self.height):
             for x in range(self.width):
-                r, g, b, a = img.getpixel((x, y))
-                f = (a / 255.0) * opacity      # alpha-weighted, composited over black
+                r, g, b, a = cast("tuple[int, int, int, int]", img.getpixel((x, y)))
+                f = (a / 255.0) * opacity  # alpha-weighted, composited over black
                 rr, gg, bb = round(r * f), round(g * f), round(b * f)
                 if rr or gg or bb:
                     pixels.append((x, y, rr, gg, bb))
@@ -217,9 +219,17 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         msg = "Home Assistant unavailable"
         y = self.height // 2 + 3
         return scrolling_text(
-            canvas, graphics, 0, y, self.width, self._scroll_font,
-            graphics.Color(200, 60, 60), self._gcolor(graphics, "background"),
-            msg, scroll_pos, center=True,
+            canvas,
+            graphics,
+            0,
+            y,
+            self.width,
+            self._scroll_font,
+            graphics.Color(200, 60, 60),
+            self._gcolor(graphics, "background"),
+            msg,
+            scroll_pos,
+            center=True,
         )
 
     # ── Grid layout ──────────────────────────────────────────────────────────
@@ -233,8 +243,9 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
 
         title_h = 0
         if self.config.title:
-            self._draw_centered(canvas, graphics, self.config.title,
-                                 self._label_font, 6, self._gcolor(graphics, "title"))
+            self._draw_centered(
+                canvas, graphics, self.config.title, self._label_font, 6, self._gcolor(graphics, "title")
+            )
             title_h = 8
 
         # Reserve a bottom strip for the charge bar, if configured.
@@ -267,16 +278,23 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             # Label (HA friendly_name unless overridden)
             label = tile.label or self._friendly(data, tile.entity)
             if label:
-                self._draw_centered(canvas, graphics, label, self._label_font,
-                                    label_baseline, self._gcolor(graphics, "label"),
-                                    center_x=cx, color_override=tile.label_color)
+                self._draw_centered(
+                    canvas,
+                    graphics,
+                    label,
+                    self._label_font,
+                    label_baseline,
+                    self._gcolor(graphics, "label"),
+                    center_x=cx,
+                    color_override=tile.label_color,
+                )
 
             # Value
             value_text = self._format_value(data, tile)
-            value_color = (graphics.Color(*tile.color) if tile.color
-                           else self._gcolor(graphics, "value"))
-            self._draw_centered(canvas, graphics, value_text, self._value_font,
-                                value_baseline, value_color, center_x=cx)
+            value_color = graphics.Color(*tile.color) if tile.color else self._gcolor(graphics, "value")
+            self._draw_centered(
+                canvas, graphics, value_text, self._value_font, value_baseline, value_color, center_x=cx
+            )
 
         if self.config.charge_bar:
             self._render_charge_strip(canvas, graphics, data, self.height - strip_h, strip_h)
@@ -284,6 +302,8 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
 
     def _render_charge_strip(self, canvas, graphics, data, top, h) -> None:
         cb = self.config.charge_bar
+        if cb is None:
+            return
         ent = data.get(cb["active_entity"])
         state = (ent.state if ent else "").strip()
         s = state.lower()
@@ -293,8 +313,9 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         if not charging:
             # Idle: just the charging status, centered (e.g. "Disconnected").
             text = state.replace("_", " ").title() or "—"
-            self._draw_centered(canvas, graphics, text, self._value_font,
-                                top + h // 2 + 3, self._gcolor(graphics, "value"), center_x=cx)
+            self._draw_centered(
+                canvas, graphics, text, self._value_font, top + h // 2 + 3, self._gcolor(graphics, "value"), center_x=cx
+            )
             return
 
         # Charging: time-remaining text above an animated horizontal battery bar.
@@ -308,9 +329,15 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
                 text = f'{cb["eta_prefix"]}{remaining}'
             else:
                 text = eta.state.strip()  # unparseable — show whatever HA gave
-        self._draw_centered(canvas, graphics, text, self._value_font,
-                            top + self._value_font["size"]["height"],
-                            self._gcolor(graphics, "value"), center_x=cx)
+        self._draw_centered(
+            canvas,
+            graphics,
+            text,
+            self._value_font,
+            top + self._value_font["size"]["height"],
+            self._gcolor(graphics, "value"),
+            center_x=cx,
+        )
 
         level = max(0.0, min(100.0, data.get_float(cb["level_entity"])))
         y1 = top + h - 2
@@ -328,6 +355,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         s = raw.strip()
         # ISO datetime -> remaining from now
         from datetime import datetime, timezone
+
         try:
             dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
             now = datetime.now(timezone.utc) if dt.tzinfo else datetime.now()
@@ -336,6 +364,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             pass
         # leading "<h>h <m>m" duration
         import re
+
         m = re.match(r"\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?", s, re.I)
         if m and (m.group(1) or m.group(2)):
             return int(m.group(1) or 0) * 60 + int(m.group(2) or 0)
@@ -368,8 +397,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         fill_c = graphics.Color(*fill)
         wave_c = self._gcolor(graphics, "battery_wave")
         for col in range(x0 + 1, x0 + 1 + fill_w):
-            graphics.DrawLine(canvas, col, y0 + 1, col, y1 - 1,
-                              wave_c if col == wave_col else fill_c)
+            graphics.DrawLine(canvas, col, y0 + 1, col, y1 - 1, wave_c if col == wave_col else fill_c)
 
     # States that mean "no data" — used to hide hide_when_unavailable tiles.
     _NO_DATA_STATES = {"unknown", "unavailable", "none", "", "—", "–", "-"}
@@ -389,7 +417,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         num = ent.as_float()
         if num is None:
             # non-numeric state (e.g. "home", "on") — title-case it
-            return ent.state.replace("_", " ").title()
+            return str(ent.state).replace("_", " ").title()
         num *= tile.scale
         if tile.decimals <= 0:
             body = f"{int(round(num))}"
@@ -401,7 +429,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
     def _friendly(self, data, entity_id: str) -> str:
         ent = data.get(entity_id)
         if ent and ent.friendly_name:
-            return ent.friendly_name
+            return str(ent.friendly_name)
         return entity_id.split(".", 1)[-1].replace("_", " ").title()
 
     # ── Powerwall layout ─────────────────────────────────────────────────────
@@ -445,6 +473,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             # meter, so we only animate dots on top (base=False).
             def A(x, y):
                 return (round(x * w / 128), round(y * h / 64))
+
             sol_m, sol_e = A(68, 40), A(68, 32)
             hom_m, hom_e = A(70, 43), A(80, 40)
             grd_m, grd_e = A(69, 51), A(92, 58)
@@ -486,23 +515,26 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         if art:
             self._reading(canvas, graphics, round(w * 0.47), 6, kw(solar), "Solar", white)
             self._reading(canvas, graphics, round(w * 0.85), round(h * 0.50), kw(home), "Home", white)
-            self._reading(canvas, graphics, round(w * 0.17), round(h * 0.80),
-                          kw(battery), f"PW {charge:.0f}%", white)
+            self._reading(canvas, graphics, round(w * 0.17), round(h * 0.80), kw(battery), f"PW {charge:.0f}%", white)
             self._reading(canvas, graphics, round(w * 0.81), round(h * 0.80), kw(grid), "Grid", white)
         else:
-            self._reading(canvas, graphics, sol_t[0], 7, kw(solar), "Solar", white)
-            self._reading(canvas, graphics, hom_t[0], 7, kw(home), "Home", white)
-            self._reading(canvas, graphics, pw_t[0], h - 13,
-                          f"{kw(battery)} {charge:.0f}%", "Powerwall", white)
-            self._reading(canvas, graphics, grd_t[0], h - 13, kw(grid), "Grid", white)
+            self._reading(canvas, graphics, sol_e[0], 7, kw(solar), "Solar", white)
+            self._reading(canvas, graphics, hom_e[0], 7, kw(home), "Home", white)
+            self._reading(canvas, graphics, pw_e[0], h - 13, f"{kw(battery)} {charge:.0f}%", "Powerwall", white)
+            self._reading(canvas, graphics, grd_e[0], h - 13, kw(grid), "Grid", white)
         return None
 
     def _reading(self, canvas, graphics, cx, value_y, value, label, vcolor) -> None:
-        self._draw_centered(canvas, graphics, value, self._value_font, value_y,
-                            vcolor, center_x=cx)
-        self._draw_centered(canvas, graphics, label, self._label_font,
-                            value_y + self._label_font["size"]["height"] + 1,
-                            self._gcolor(graphics, "label"), center_x=cx)
+        self._draw_centered(canvas, graphics, value, self._value_font, value_y, vcolor, center_x=cx)
+        self._draw_centered(
+            canvas,
+            graphics,
+            label,
+            self._label_font,
+            value_y + self._label_font["size"]["height"] + 1,
+            self._gcolor(graphics, "label"),
+            center_x=cx,
+        )
 
     def _flow_line(self, canvas, a, b, color, active: bool, base: bool = True) -> None:
         """Animate dots from a toward b. When ``base`` is set, also draw a faint
@@ -513,8 +545,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         steps = max(abs(x1 - x0), abs(y1 - y0))
         if steps <= 0:
             return
-        pts = [(round(x0 + (x1 - x0) * i / steps), round(y0 + (y1 - y0) * i / steps))
-               for i in range(steps + 1)]
+        pts = [(round(x0 + (x1 - x0) * i / steps), round(y0 + (y1 - y0) * i / steps)) for i in range(steps + 1)]
         if base:
             idle = self._color("flow_idle")
             for x, y in pts:
@@ -563,8 +594,8 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             return (x * sx, y * sy)
 
         # Isometric cuboid: roof rhombus on top, two wall faces below.
-        A, B, F, L = P(64, 9), P(105, 26), P(64, 43), P(23, 26)   # roof corners
-        B2, F2, L2 = P(105, 41), P(64, 58), P(23, 41)             # wall bottoms
+        A, B, F, L = P(64, 9), P(105, 26), P(64, 43), P(23, 26)  # roof corners
+        B2, F2, L2 = P(105, 41), P(64, 58), P(23, 41)  # wall bottoms
         roof, rface, lface = [A, B, F, L], [F, B, B2, F2], [L, F, F2, L2]
 
         px: dict = {}
@@ -577,9 +608,9 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
                     if self._pip(xx, yy, poly):
                         px[(xx, yy)] = color
 
-        fill(rface, (28, 34, 50))   # right wall (lighter)
-        fill(lface, (18, 24, 38))   # left wall (shaded)
-        fill(roof, (13, 19, 33))    # solar roof base
+        fill(rface, (28, 34, 50))  # right wall (lighter)
+        fill(lface, (18, 24, 38))  # left wall (shaded)
+        fill(roof, (13, 19, 33))  # solar roof base
 
         def lerp(p, q, t):
             return (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
@@ -601,7 +632,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
 
         # A couple of lit windows on the right wall.
         win = (84, 88, 62)
-        for (a, b) in ((P(73, 46), P(80, 53)), (P(86, 43), P(93, 50))):
+        for a, b in ((P(73, 46), P(80, 53)), (P(86, 43), P(93, 50))):
             for yy in range(int(a[1]), int(b[1]) + 1):
                 for xx in range(int(a[0]), int(b[0]) + 1):
                     if (xx, yy) in px:
@@ -611,8 +642,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
 
     # ── Text helper ──────────────────────────────────────────────────────────
 
-    def _draw_centered(self, canvas, graphics, text, font, baseline_y, color,
-                       center_x=None, color_override=None, **_):
+    def _draw_centered(self, canvas, graphics, text, font, baseline_y, color, center_x=None, color_override=None, **_):
         if center_x is None:
             center_x = self.width // 2
         if color_override is not None:

@@ -18,10 +18,10 @@ class Tile:
 
     entity: str
     label: str = ""
-    unit: Optional[str] = None          # override HA's unit_of_measurement; "" hides it
-    decimals: int = 1                   # rounding for numeric states
-    scale: float = 1.0                  # multiply the numeric state (e.g. 0.001 for W -> kW)
-    color: Optional[list] = None        # [r, g, b] for the value text
+    unit: Optional[str] = None  # override HA's unit_of_measurement; "" hides it
+    decimals: int = 1  # rounding for numeric states
+    scale: float = 1.0  # multiply the numeric state (e.g. 0.001 for W -> kW)
+    color: Optional[list] = None  # [r, g, b] for the value text
     label_color: Optional[list] = None  # [r, g, b] for the label text
     hide_when_unavailable: bool = False  # drop the tile entirely when its state has no data
 
@@ -77,9 +77,7 @@ class Config(api.PluginConfig):
         self.background_opacity: float = float(dashboard.get("background_opacity", 0.15))
 
         # grid layout
-        self.tiles: list[Tile] = [
-            Tile.from_dict(t) for t in dashboard.get("tiles", []) if t.get("entity")
-        ]
+        self.tiles: list[Tile] = [Tile.from_dict(t) for t in dashboard.get("tiles", []) if t.get("entity")]
         self.columns: int = int(dashboard.get("columns", 2))
 
         # Optional charge bar for the grid: a horizontal battery-style progress
@@ -87,16 +85,20 @@ class Config(api.PluginConfig):
         # charging it draws an animated bar filled to `level_entity` plus the
         # `eta_entity` text; otherwise it shows the charging status as text.
         cb = dashboard.get("charge_bar") or {}
-        self.charge_bar: Optional[dict] = {
-            "active_entity": cb.get("active_entity", ""),
-            "active_states": [s.lower() for s in cb.get("active_states", ["charging"])],
-            "level_entity": cb.get("level_entity", ""),
-            "eta_entity": cb.get("eta_entity", ""),
-            # `eta_entity` may be an ISO completion timestamp or a duration
-            # string; either way the time remaining is computed and shown as
-            # "<eta_prefix><h>h, <m>m".
-            "eta_prefix": cb.get("eta_prefix", "Complete in "),
-        } if cb else None
+        self.charge_bar: Optional[dict] = (
+            {
+                "active_entity": cb.get("active_entity", ""),
+                "active_states": [s.lower() for s in cb.get("active_states", ["charging"])],
+                "level_entity": cb.get("level_entity", ""),
+                "eta_entity": cb.get("eta_entity", ""),
+                # `eta_entity` may be an ISO completion timestamp or a duration
+                # string; either way the time remaining is computed and shown as
+                # "<eta_prefix><h>h, <m>m".
+                "eta_prefix": cb.get("eta_prefix", "Complete in "),
+            }
+            if cb
+            else None
+        )
 
         # Optional visibility gate: the dashboard is only shown in the rotation
         # while one of `entities` reads a state in `states` (default "on"), e.g.
@@ -104,10 +106,14 @@ class Config(api.PluginConfig):
         # `entity` or a list of `entities`.
         sw = dashboard.get("show_when") or {}
         sw_entities = sw.get("entities") or ([sw["entity"]] if sw.get("entity") else [])
-        self.show_when: Optional[dict] = {
-            "entities": sw_entities,
-            "states": [s.lower() for s in sw.get("states", ["on"])],
-        } if sw_entities else None
+        self.show_when: Optional[dict] = (
+            {
+                "entities": sw_entities,
+                "states": [s.lower() for s in sw.get("states", ["on"])],
+            }
+            if sw_entities
+            else None
+        )
 
         # powerwall layout
         entities = dict(_POWERWALL_DEFAULT_ENTITIES)
@@ -127,8 +133,9 @@ class Config(api.PluginConfig):
         else:
             ids = [t.entity for t in self.tiles if t.entity]
             if self.charge_bar:
-                ids += [self.charge_bar[k] for k in ("active_entity", "level_entity", "eta_entity")
-                        if self.charge_bar[k]]
+                ids += [
+                    self.charge_bar[k] for k in ("active_entity", "level_entity", "eta_entity") if self.charge_bar[k]
+                ]
         if self.show_when:
             ids += self.show_when["entities"]
         # preserve order, drop dupes
@@ -147,9 +154,7 @@ class Config(api.PluginConfig):
 
     def _validate(self) -> None:
         if not self.base_url:
-            LOGGER.warning(
-                "[HOMEASSISTANT] No 'base_url' configured. Plugin cannot fetch data."
-            )
+            LOGGER.warning("[HOMEASSISTANT] No 'base_url' configured. Plugin cannot fetch data.")
         if not self.token:
             LOGGER.warning(
                 "[HOMEASSISTANT] No 'token' configured. Create a long-lived access "
@@ -162,6 +167,4 @@ class Config(api.PluginConfig):
             )
             self.layout_mode = "grid"
         if self.layout_mode == "grid" and not self.tiles:
-            LOGGER.warning(
-                "[HOMEASSISTANT] Grid dashboard has no 'tiles' configured; nothing to show."
-            )
+            LOGGER.warning("[HOMEASSISTANT] Grid dashboard has no 'tiles' configured; nothing to show.")
