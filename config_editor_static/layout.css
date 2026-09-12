@@ -209,3 +209,7 @@ main {
 #list li.off { color: var(--muted); }
 #list li .key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #list li .where { font-size: 11px; opacity: .7; white-space: nowrap; flex: none; }
+
+#list li.derived { font-style: italic; color: var(--muted); }
+.xref { color: var(--accent); text-decoration: none; }
+.xref:hover { text-decoration: underline; }

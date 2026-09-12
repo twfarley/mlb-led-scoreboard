@@ -141,5 +141,68 @@ class TestUnsavedEdits(unittest.TestCase):
         self.assertNotEqual(before, after, "moving an element should change the rendered board")
 
 
+class TestScreenVariants(unittest.TestCase):
+    """Several elements only exist in a particular game state, so the editor
+    offers a variant per state rather than pretending they can all be shown."""
+
+    def test_every_variant_renders(self):
+        import layout_preview
+
+        for name in layout_preview.SCREENS:
+            png = layout_preview.render("w128h64", name)
+            self.assertTrue(png.startswith(b"\x89PNG\r\n"), f"{name} did not render")
+
+    def test_nohitter_variant_swaps_in_the_alternate_positions(self):
+        import layout_preview
+
+        normal = {e["keypath"]: e for e in layout_preview.elements("w128h64", "live")}
+        # layout.coords() returns the `nohit` sub-dict when the state is active,
+        # so the alternate position must actually differ from the normal one.
+        coords = layout_preview._coords_for("w128h64")
+        self.assertNotEqual(coords["batter_count"]["nohit"], {k: coords["batter_count"][k] for k in ("x", "y")})
+        self.assertIn("nohitter", normal)
+
+    def test_nohitter_variant_forces_a_late_inning(self):
+        """The NO-HITTER banner is gated on the inning, so a 1st-inning fixture
+        would render the very element the variant exists to show."""
+        import layout_preview
+
+        spec = layout_preview.SCREENS["live_nohitter"]
+        threshold = layout_preview._coords_for("w128h64")["nohitter"]["innings_until_display"]
+        self.assertIsNotNone(spec.inning)
+        self.assertGreater(spec.inning, threshold)
+
+    def test_show_disabled_changes_the_render_but_not_the_coords(self):
+        import layout_preview
+
+        plain = layout_preview.render("w128h64", "live")
+        forced = layout_preview.render("w128h64", "live", None, True)
+        self.assertNotEqual(plain, forced, "switched-off elements should appear")
+        # The flag is a render-time override only.
+        self.assertIs(layout_preview._coords_for("w128h64")["atbat"]["pitch"]["enabled"], False)
+
+    def test_derived_elements_are_listed_without_a_box(self):
+        import layout_preview
+
+        era = next(e for e in layout_preview.elements("w128h64", "live") if e["keypath"] == "atbat.pitcher_era")
+        self.assertIsNone(era["box"], "a derived element has no coordinates to box")
+        self.assertEqual(era["anchor"], "derived")
+        self.assertEqual(era["controlled_by"], ["atbat.batter_stats", "atbat.pitcher"])
+        # It must not appear on a screen that never draws it.
+        final = {e["keypath"] for e in layout_preview.elements("w128h64", "final")}
+        self.assertNotIn("atbat.pitcher_era", final)
+
+    def test_inning_break_screen_shows_due_up_and_not_the_at_bat(self):
+        import layout_preview
+
+        keys = {e["keypath"] for e in layout_preview.elements("w128h64", "live_break")}
+        self.assertIn("inning.break.due_up.leadoff", keys)
+        self.assertNotIn("atbat.batter", keys)
+        # ...and the normal live screen is the other way round.
+        live = {e["keypath"] for e in layout_preview.elements("w128h64", "live")}
+        self.assertIn("atbat.batter", live)
+        self.assertNotIn("inning.break.due_up.leadoff", live)
+
+
 if __name__ == "__main__":
     unittest.main()

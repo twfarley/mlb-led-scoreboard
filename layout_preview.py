@@ -24,7 +24,7 @@ import json
 import re
 from collections import namedtuple
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 REPO = Path(__file__).parent
 EMULATOR_CONFIG = REPO / "preview_emulator_config.json"
@@ -36,14 +36,43 @@ ANCHORS_FILE = REPO / "schemas" / "coordinates" / "_anchors.json"
 NOMINAL_CHARS = 4
 
 # A screen is one branch of MlbRenderer.__draw_game, plus the always-on-top team
-# banner. `timecode=None` means "latest", which for these games is Final.
-Fixture = namedtuple("Fixture", ["game_id", "game_date", "timecode", "label"])
+# banner. Several elements only exist in a particular game state -- the
+# `nohit` / `perfect_game` / `warmup` sub-keys are alternate POSITIONS that
+# layout.coords() swaps in when that state is active, so they are mutually
+# exclusive and cannot all be shown at once. Hence variants rather than one
+# "show everything" view.
+#
+# `timecode=None` means "latest", which for these games is Final.
+Fixture = namedtuple("Fixture", ["game_id", "game_date", "timecode"])
 
-SCREENS: dict[str, Fixture] = {
-    "live": Fixture(565956, "2019-08-17", "20190817_231033", "Live game (mid at-bat)"),
-    "pregame": Fixture(565956, "2019-08-17", "20190817_223000", "Pregame"),
-    "final": Fixture(565956, "2019-08-17", None, "Final"),
-    "irregular": Fixture(745808, "2024-06-26", "20240627_004712", "Delayed / irregular status"),
+_MIL_WSH = Fixture(565956, "2019-08-17", "20190817_231033")
+_MIL_WSH_PRE = Fixture(565956, "2019-08-17", "20190817_223000")
+_MIL_WSH_FINAL = Fixture(565956, "2019-08-17", None)
+_DELAYED = Fixture(745808, "2024-06-26", "20240627_004712")
+
+
+class Screen(NamedTuple):
+    fixture: Fixture
+    base: str  # which renderer branch to run
+    label: str
+    state: Optional[str] = None  # layout state: nohit | perfect_game | warmup
+    inning_break: bool = False
+    inning: Optional[int] = None  # force the inning number (see below)
+
+
+SCREENS: dict[str, Screen] = {
+    "live": Screen(_MIL_WSH, "live", "Live game (mid at-bat)"),
+    "live_break": Screen(_MIL_WSH, "live", "Live — inning break", inning_break=True),
+    # The NO-HITTER banner only draws past coords("nohitter").innings_until_display
+    # (5 on most boards), and the fixture is in the 1st, so force a late inning or
+    # the very element these variants exist to show would stay invisible.
+    "live_nohitter": Screen(_MIL_WSH, "live", "Live — no-hitter", state="nohit", inning=7),
+    "live_perfect": Screen(_MIL_WSH, "live", "Live — perfect game", state="perfect_game", inning=7),
+    "pregame": Screen(_MIL_WSH_PRE, "pregame", "Pregame"),
+    "pregame_warmup": Screen(_MIL_WSH_PRE, "pregame", "Pregame — warmup", state="warmup"),
+    "final": Screen(_MIL_WSH_FINAL, "final", "Final"),
+    "final_nohitter": Screen(_MIL_WSH_FINAL, "final", "Final — no-hitter", state="nohit"),
+    "irregular": Screen(_DELAYED, "irregular", "Delayed / irregular status"),
 }
 
 _SIZE_RE = re.compile(r"^w(\d+)h(\d+)$")
@@ -57,7 +86,7 @@ def sizes() -> list[str]:
 
 
 def screens() -> dict[str, str]:
-    return {name: fx.label for name, fx in SCREENS.items()}
+    return {name: scr.label for name, scr in SCREENS.items()}
 
 
 def _force_emulation() -> None:
@@ -111,6 +140,30 @@ def _build_game(fixture: Fixture):
 
     _game_cache[key] = game
     return game
+
+
+def _enable_all(values: dict) -> dict:
+    """Copy of `values` with every `enabled: false` flipped on.
+
+    Used for the preview only. Several elements ship switched off
+    (atbat.pitch, atbat.play_result, teams.record...), so they render nothing
+    and cannot be positioned by eye. This lets you see them without having to
+    enable them for real and remember to switch them back.
+    """
+    import copy
+
+    out = copy.deepcopy(values)
+
+    def walk(node):
+        if not isinstance(node, dict):
+            return
+        if node.get("enabled") is False:
+            node["enabled"] = True
+        for child in node.values():
+            walk(child)
+
+    walk(out)
+    return out
 
 
 def _anchor_meta() -> dict:
@@ -245,15 +298,45 @@ def elements(size: str, screen: str, coords: Optional[dict] = None) -> list[dict
                 "font": font_info,
             }
         )
+
+    # Things the board draws that own no coordinates. They get no box, but they
+    # are listed so you can find them and see what governs them -- otherwise you
+    # hunt the element list for an "ERA" that is never going to be there.
+    for keypath, meta in sorted(meta_doc.get("derived", {}).items()):
+        if screen not in meta.get("screens", []):
+            continue
+        toggle = meta.get("toggle") or {}
+        owner = _resolve(values, toggle.get("keypath", "")) or {}
+        out.append(
+            {
+                "keypath": keypath,
+                "anchor": "derived",
+                "extent": "derived",
+                "label": meta.get("label"),
+                "note": meta.get("note"),
+                "controlled_by": meta.get("controlled_by", []),
+                "toggle": toggle or None,
+                "coords": {},
+                "box": None,
+                "dynamic": True,
+                "enabled": owner.get(toggle.get("key")) if toggle else None,
+                "font": None,
+            }
+        )
+
     return out
 
 
-def render(size: str, screen: str, coords: Optional[dict] = None) -> bytes:
+def render(size: str, screen: str, coords: Optional[dict] = None, show_disabled: bool = False) -> bytes:
     """Render one screen of one board size. Returns PNG bytes at native resolution.
 
     `coords` overrides the on-disk coordinates without writing them, so the
     editor can show unsaved edits on the real board rather than only moving a
     box around over a stale image.
+
+    `show_disabled` flips every `enabled: false` on for the render only, so an
+    element that is switched off can still be seen and positioned. It never
+    touches the coordinates the editor will save.
     """
     m = _SIZE_RE.match(size)
     if not m:
@@ -275,19 +358,36 @@ def render(size: str, screen: str, coords: Optional[dict] = None) -> bytes:
     from data.config.color import Color
     from data.config.layout import Layout
     from data.scoreboard import Scoreboard
+    from data.scoreboard.inning import Inning
     from data.scoreboard.postgame import Postgame
     from data.scoreboard.pregame import Pregame
     from renderers.games import irregular, postgame as postgamerender, pregame as pregamerender, teams
     from renderers.games import game as gamerender
 
-    layout = Layout(coords if coords is not None else _coords_for(size), width, height)
+    values = coords if coords is not None else _coords_for(size)
+    if show_disabled:
+        values = _enable_all(values)
+    layout = Layout(values, width, height)
     colors = Color(_load_json(REPO / "colors" / "scoreboard.json", REPO / "colors" / "scoreboard.example.json"))
     team_colors = Color(_load_json(REPO / "colors" / "teams.json", REPO / "colors" / "teams.example.json"))
 
-    fixture = SCREENS[screen]
-    game = _build_game(fixture)
+    spec = SCREENS[screen]
+    game = _build_game(spec.fixture)
     scoreboard = Scoreboard(game)
+
+    # Derive the state from the game first, then let the variant override it.
+    # The nohit/perfect_game/warmup sub-keys are alternate positions selected by
+    # layout.state, so forcing the state is what makes those coordinates visible.
     layout.state_for_game(game)
+    if spec.state is not None:
+        layout.set_state(spec.state)
+
+    if spec.inning is not None:
+        scoreboard.inning.number = spec.inning
+
+    if spec.inning_break:
+        # The break branch keys off the half-inning state, not a layout state.
+        scoreboard.inning.state = Inning.MIDDLE
 
     options = RGBMatrixOptions()
     options.cols, options.rows = width, height
@@ -300,11 +400,11 @@ def render(size: str, screen: str, coords: Optional[dict] = None) -> bytes:
     # Mirrors MlbRenderer.__draw_game. text_pos is parked at the canvas width so
     # scrolling text renders at its start position rather than mid-scroll.
     text_pos = width
-    if screen == "pregame":
+    if spec.base == "pregame":
         pregamerender.render_pregame(canvas, layout, colors, Pregame(game, "12h"), text_pos, False, False, False)
-    elif screen == "final":
+    elif spec.base == "final":
         postgamerender.render_postgame(canvas, layout, colors, Postgame(game), scoreboard, text_pos, False, False)
-    elif screen == "irregular":
+    elif spec.base == "irregular":
         short_text = layout.coords("status.text")["short_text"]
         irregular.render_irregular_status(canvas, layout, colors, scoreboard, short_text, text_pos)
     else:
@@ -317,7 +417,7 @@ def render(size: str, screen: str, coords: Optional[dict] = None) -> bytes:
         team_colors,
         scoreboard.home_team,
         scoreboard.away_team,
-        show_score=(screen != "pregame"),
+        show_score=(spec.base != "pregame"),
         scoreboard_colors=colors,
     )
 

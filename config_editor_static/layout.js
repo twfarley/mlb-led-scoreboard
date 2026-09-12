@@ -172,7 +172,12 @@ async function refresh() {
   const res = await fetch("/api/layout/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ size: state.size, screen: state.screen, coords: state.coords }),
+    body: JSON.stringify({
+      size: state.size,
+      screen: state.screen,
+      coords: state.coords,
+      show_disabled: $("show-disabled").checked,
+    }),
   });
   if (token !== refreshToken) return;
   if (res.ok) {
@@ -218,6 +223,7 @@ async function boot() {
   };
   $("show-boxes").onchange = paint;
   $("show-grid").onchange = paint;
+  $("show-disabled").onchange = refresh;
   $("save").onclick = save;
   $("revert").onclick = revert;
 
@@ -371,6 +377,7 @@ function paint() {
   if (!$("show-boxes").checked) return;
 
   for (const element of state.elements) {
+    if (!element.box) continue; // derived: nothing of its own to draw a box around
     const [x0, y0, x1, y1] = element.box;
     const classes = ["el"];
     if (element.dynamic) classes.push("nominal");
@@ -406,11 +413,13 @@ function paintList() {
     const classes = [];
     if (element.keypath === state.selected) classes.push("selected");
     if (element.enabled === false) classes.push("off");
+    if (element.anchor === "derived") classes.push("derived");
+    const where = element.anchor === "derived" ? "derived" : element.enabled === false ? "off" : element.anchor;
     const row = el(
       "li",
       { class: classes.join(" ") },
       el("span", { class: "key" }, element.keypath),
-      el("span", { class: "where" }, element.enabled === false ? "off" : element.anchor)
+      el("span", { class: "where" }, where)
     );
     row.onclick = () => select(element.keypath);
     list.append(row);
@@ -438,7 +447,45 @@ function paintDetails() {
   }
   box.className = "";
   box.innerHTML = "";
-  box.append(el("h3", {}, element.keypath));
+  box.append(el("h3", {}, element.label ? `${element.label} — ${element.keypath}` : element.keypath));
+
+  // A derived element is drawn from other elements' coordinates and has none of
+  // its own, so there is nothing to drag and nothing to type into.
+  if (element.anchor === "derived") {
+    box.append(el("div", {}, el("span", { class: "tag warn" }, "derived — cannot be moved directly")));
+    box.append(el("p", { class: "note" }, element.note || ""));
+
+    if (element.toggle) {
+      const owner = nodeAt(state.coords, element.toggle.keypath);
+      if (owner && typeof owner[element.toggle.key] === "boolean") {
+        const fields = el("div", { class: "fields" });
+        const toggle = el("input", { type: "checkbox" });
+        toggle.checked = owner[element.toggle.key];
+        toggle.onchange = () => {
+          owner[element.toggle.key] = toggle.checked;
+          markDirty();
+          refresh();
+        };
+        fields.append(el("label", { class: "check" }, el("span", {}, element.toggle.key), toggle));
+        box.append(fields);
+      }
+    }
+
+    if (element.controlled_by && element.controlled_by.length) {
+      const links = el("p", { class: "readonly-note" }, "Move these instead: ");
+      element.controlled_by.forEach((keypath, i) => {
+        if (i) links.append(", ");
+        const link = el("a", { href: "#", class: "xref" }, keypath);
+        link.onclick = (ev) => {
+          ev.preventDefault();
+          select(keypath);
+        };
+        links.append(link);
+      });
+      box.append(links);
+    }
+    return;
+  }
 
   const tags = el("div");
   tags.append(el("span", { class: "tag" }, element.anchor));

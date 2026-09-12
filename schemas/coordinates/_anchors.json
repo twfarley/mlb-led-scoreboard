@@ -46,19 +46,61 @@
     "live screen rather than a screen of its own."
   ],
 
+  "$derived_comment": [
+    "Things the board draws that have no coordinates of their own. They are listed in",
+    "the editor so you can find them and see what governs them, but they cannot be",
+    "moved directly -- there is nothing to move."
+  ],
+
+  "derived": {
+    "atbat.pitcher_era": {
+      "label": "Pitcher ERA",
+      "screens": ["live", "live_nohitter", "live_perfect"],
+      "controlled_by": ["atbat.batter_stats", "atbat.pitcher"],
+      "toggle": { "keypath": "atbat.batter_stats", "key": "show_era" },
+      "note": "Drawn by __render_pitcher_text, not from its own coordinates. Its x is the leftmost column of atbat.batter_stats (which is itself measured back from the right edge of the board) and its y is the atbat.pitcher baseline, in the atbat.batter_stats font. To move it, move those two elements; to hide it, clear show_era."
+    }
+  },
+
   "screens": {
     "pregame": ["pregame.", "teams.", "network."],
+    "pregame_warmup": ["pregame.", "teams.", "network."],
     "live": [
       "atbat.",
       "bases.",
       "outs.",
-      "inning.",
+      "inning.number",
+      "inning.arrow",
+      "batter_count",
+      "nohitter",
+      "teams.",
+      "network."
+    ],
+    "live_break": ["inning.break.", "teams.", "network."],
+    "live_nohitter": [
+      "atbat.",
+      "bases.",
+      "outs.",
+      "inning.number",
+      "inning.arrow",
+      "batter_count",
+      "nohitter",
+      "teams.",
+      "network."
+    ],
+    "live_perfect": [
+      "atbat.",
+      "bases.",
+      "outs.",
+      "inning.number",
+      "inning.arrow",
       "batter_count",
       "nohitter",
       "teams.",
       "network."
     ],
     "final": ["final.", "teams.", "network."],
+    "final_nohitter": ["final.", "teams.", "network."],
     "irregular": ["status.", "teams.", "network."],
     "news": ["news."],
     "standings": ["standings."]

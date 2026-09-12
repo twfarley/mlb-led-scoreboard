@@ -463,8 +463,9 @@ class Handler(BaseHTTPRequestHandler):
             query = parse_qs(urlparse(self.path).query)
             size = (query.get("size") or ["w128h64"])[0]
             screen = (query.get("screen") or ["live"])[0]
+            show_disabled = (query.get("show_disabled") or ["0"])[0] in ("1", "true")
             try:
-                return self._send_bytes(layout_preview.render(size, screen), "image/png")
+                return self._send_bytes(layout_preview.render(size, screen, None, show_disabled), "image/png")
             except ValueError as exc:
                 return self._send_json({"error": str(exc)}, 400)
             except Exception as exc:
@@ -516,7 +517,12 @@ class Handler(BaseHTTPRequestHandler):
                 import layout_preview
 
                 body = self._read_body()
-                png = layout_preview.render(body.get("size", "w128h64"), body.get("screen", "live"), body.get("coords"))
+                png = layout_preview.render(
+                    body.get("size", "w128h64"),
+                    body.get("screen", "live"),
+                    body.get("coords"),
+                    bool(body.get("show_disabled")),
+                )
                 return self._send_bytes(png, "image/png")
             if path == "/api/layout/elements":
                 import layout_preview
