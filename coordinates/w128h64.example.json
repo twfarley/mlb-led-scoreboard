@@ -6,19 +6,19 @@
   },
   "bases": {
     "1B": {
-      "x": 112,
-      "y": 42,
-      "size": 10
+      "x": 88,
+      "y": 37,
+      "size": 12
     },
     "2B": {
-      "x": 103,
-      "y": 33,
-      "size": 10
+      "x": 79,
+      "y": 29,
+      "size": 12
     },
     "3B": {
-      "x": 94,
-      "y": 42,
-      "size": 10
+      "x": 70,
+      "y": 37,
+      "size": 12
     }
   },
   "final": {
@@ -82,8 +82,8 @@
       }
     },
     "number": {
-      "x": 87,
-      "y": 42,
+      "x": 65,
+      "y": 48,
       "nohit": {
         "x": 93,
         "y": 42
@@ -91,102 +91,103 @@
       "perfect_game": {
         "x": 93,
         "y": 42
-      }
+      },
+      "font_name": "5x7"
     },
     "arrow": {
-      "size": 6,
+      "size": 3,
       "up": {
-        "x_offset": -11,
-        "y_offset": -8
+        "x_offset": 2,
+        "y_offset": -19
       },
       "down": {
-        "x_offset": -11,
-        "y_offset": -4
+        "x_offset": 2,
+        "y_offset": 1
       }
     }
   },
   "outs": {
     "1": {
-      "x": 95,
-      "y": 56,
-      "size": 5
+      "x": 105,
+      "y": 46,
+      "size": 4
     },
     "2": {
-      "x": 106,
-      "y": 56,
-      "size": 5
+      "x": 114,
+      "y": 46,
+      "size": 4
     },
     "3": {
-      "x": 118,
-      "y": 56,
-      "size": 5
+      "x": 123,
+      "y": 46,
+      "size": 4
     }
   },
   "atbat": {
     "batter": {
       "font_name": "5x7",
       "x": 1,
-      "y": 60,
-      "width": 41
+      "y": 10,
+      "width": 60
     },
     "pitcher": {
       "font_name": "5x7",
       "x": 1,
-      "y": 40,
-      "width": 41
+      "y": 25,
+      "width": 55
     },
     "pitch": {
       "font_name": "4x6",
       "x": 1,
       "y": 50,
-      "enabled": true,
-      "mph": true,
-      "desc_length": "long"
+      "enabled": false,
+      "mph": false,
+      "desc_length": "short"
     },
     "pitch_count": {
       "font_name": "4x6",
-      "x": 1,
-      "y": 50,
-      "enabled": false,
+      "x": 110,
+      "y": 25,
+      "enabled": true,
       "append_pitcher_name": false
     },
     "batter_order": {
       "font_name": "4x6",
       "x": 1,
       "y": 10,
-      "enabled": false
+      "enabled": true
     },
     "batter_stats": {
       "font_name": "4x6",
       "y": 10,
-      "enabled": false,
-      "show_era": false
+      "enabled": true,
+      "show_era": true
     },
     "play_description": {
       "font_name": "4x6",
       "x": 55,
       "y": 61,
       "width": 73,
-      "enabled": false,
-      "situation_fallback": false
+      "enabled": true,
+      "situation_fallback": true
     },
     "loop": 68,
     "strikeout": {
       "x": 16,
       "y": 60,
       "desc_length": "long",
-      "enabled": true
+      "enabled": false
     },
     "play_result": {
       "x": 16,
       "y": 60,
       "desc_length": "long",
-      "enabled": true
+      "enabled": false
     }
   },
   "batter_count": {
-    "x": 66,
-    "y": 62,
+    "x": 105,
+    "y": 40,
     "nohit": {
       "x": 66,
       "y": 64
@@ -194,7 +195,8 @@
     "perfect_game": {
       "x": 66,
       "y": 64
-    }
+    },
+    "font_name": "5x7"
   },
   "nohitter": {
     "x": 66,
@@ -267,44 +269,44 @@
   "teams": {
     "background": {
       "away": {
-        "width": 128,
-        "height": 16,
+        "width": 52,
+        "height": 18,
         "x": 0,
-        "y": 0
+        "y": 28
       },
       "home": {
-        "width": 128,
-        "height": 16,
+        "width": 52,
+        "height": 18,
         "x": 0,
-        "y": 16
+        "y": 46
       }
     },
     "accent": {
       "away": {
         "width": 2,
-        "height": 16,
+        "height": 18,
         "x": 0,
-        "y": 0
+        "y": 28
       },
       "home": {
         "width": 2,
-        "height": 16,
+        "height": 18,
         "x": 0,
-        "y": 16
+        "y": 46
       }
     },
     "name": {
       "away": {
-        "font_name": "9x18B",
+        "font_name": "9x18",
         "x": 4,
-        "y": 13
+        "y": 42
       },
       "home": {
-        "font_name": "9x18B",
+        "font_name": "9x18",
         "x": 4,
-        "y": 29
+        "y": 60
       },
-      "full": true
+      "full": false
     },
     "record": {
       "enabled": false,
@@ -322,17 +324,17 @@
     "line_score": {
       "away": {
         "font_name": "9x18B",
-        "x": 124,
-        "y": 13
+        "x": 51,
+        "y": 42
       },
       "home": {
         "font_name": "9x18B",
-        "x": 124,
-        "y": 29
+        "x": 51,
+        "y": 60
       },
-      "show_hits_and_errors": true,
+      "show_hits_and_errors": false,
       "show_abs_challenges": true,
-      "compress_digits": true,
+      "compress_digits": false,
       "shorten_team_name_on_high_line_score": true,
       "spacing": 5
     },
