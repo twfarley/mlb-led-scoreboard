@@ -79,6 +79,32 @@ _SIZE_RE = re.compile(r"^w(\d+)h(\d+)$")
 
 _game_cache: dict[str, Any] = {}
 
+# Sub-keys that are alternate positions rather than elements of their own.
+_LAYOUT_STATES = ("nohit", "perfect_game", "warmup")
+
+# Layout owns a per-instance BDF font cache, and loading a font costs ~28ms, so
+# building a fresh Layout per render dominates the time (~390ms). Coordinates are
+# usually unchanged between renders -- the monitor reuses them for a whole cycle,
+# and the editor only alters one value per edit -- so key a small pool on the
+# coordinates themselves. Bounded, because the editor produces a new variant on
+# every drag.
+_LAYOUT_POOL_MAX = 8
+_layout_pool: dict[tuple, Any] = {}
+
+
+def _layout_for(values: dict, width: int, height: int):
+    from data.config.layout import Layout
+
+    key = (width, height, json.dumps(values, sort_keys=True))
+    cached = _layout_pool.get(key)
+    if cached is not None:
+        return cached
+    if len(_layout_pool) >= _LAYOUT_POOL_MAX:
+        _layout_pool.pop(next(iter(_layout_pool)))
+    layout = Layout(values, width, height)
+    _layout_pool[key] = layout
+    return layout
+
 
 def sizes() -> list[str]:
     """Board sizes that ship a coordinates schema, e.g. ['w128h64', ...]."""
@@ -261,43 +287,68 @@ def elements(size: str, screen: str, coords: Optional[dict] = None) -> list[dict
         raise ValueError(f"unknown screen {screen!r}, expected one of {sorted(meta_doc['screens'])}")
 
     values = coords if coords is not None else _coords_for(size)
-    layout = Layout(values, width, height)
+    layout = _layout_for(values, width, height)
 
-    out = []
-    for keypath in sorted(anchors):
-        if not any(keypath.startswith(p) for p in prefixes):
-            continue
-        coords = _resolve(values, keypath)
-        if coords is None:
-            continue
-        meta = anchors[keypath]
-        try:
-            box = _box_for(keypath, coords, meta, layout, width, NOMINAL_CHARS)
-        except (KeyError, TypeError):
-            continue
-        if box is None:
-            continue
+    # `nohit` / `perfect_game` / `warmup` are not elements in their own right:
+    # layout.coords() substitutes them for their parent when that state is
+    # active. Resolve through the state exactly as the renderer does, so each
+    # element appears once, in the position this screen will actually draw it.
+    state = SCREENS[screen].state if screen in SCREENS else None
+    previous_state = layout.state
+    layout.set_state(state)
 
-        try:
-            font = layout.font(keypath)
-            font_info = {"width": font["size"]["width"], "height": font["size"]["height"]}
-        except Exception:
-            font_info = None
+    try:
+        out = []
+        for keypath in sorted(anchors):
+            if not any(keypath.startswith(p) for p in prefixes):
+                continue
+            if keypath.rsplit(".", 1)[-1] in _LAYOUT_STATES:
+                continue  # an alternate position, reached via its parent
+            node = _resolve(values, keypath)
+            if node is None:
+                continue
 
-        out.append(
-            {
-                "keypath": keypath,
-                "anchor": meta["anchor"],
-                "extent": meta["extent"],
-                "note": meta.get("note"),
-                "coords": coords,
-                "box": list(box),
-                # Text width depends on live data, so the box is indicative only.
-                "dynamic": meta["extent"] == "text",
-                "enabled": coords.get("enabled"),
-                "font": font_info,
-            }
-        )
+            # Where an edit should be written: the alternate when one is active.
+            edit_keypath = keypath
+            if state is not None and isinstance(node.get(state), dict):
+                edit_keypath = f"{keypath}.{state}"
+                node = node[state]
+
+            meta = anchors[keypath]
+            try:
+                box = _box_for(keypath, node, meta, layout, width, NOMINAL_CHARS)
+            except (KeyError, TypeError):
+                continue
+            if box is None:
+                continue
+
+            try:
+                font = layout.font(keypath)
+                font_info = {
+                    "width": font["size"]["width"],
+                    "height": font["size"]["height"],
+                    "baseline": getattr(font["font"], "baseline", None),
+                }
+            except Exception:
+                font_info = None
+
+            out.append(
+                {
+                    "keypath": keypath,
+                    "edit_keypath": edit_keypath,
+                    "anchor": meta["anchor"],
+                    "extent": meta["extent"],
+                    "note": meta.get("note"),
+                    "coords": node,
+                    "box": list(box),
+                    # Text width depends on live data, so the box is indicative only.
+                    "dynamic": meta["extent"] == "text",
+                    "enabled": node.get("enabled"),
+                    "font": font_info,
+                }
+            )
+    finally:
+        layout.set_state(previous_state)
 
     # Things the board draws that own no coordinates. They get no box, but they
     # are listed so you can find them and see what governs them -- otherwise you
@@ -327,7 +378,13 @@ def elements(size: str, screen: str, coords: Optional[dict] = None) -> list[dict
     return out
 
 
-def render(size: str, screen: str, coords: Optional[dict] = None, show_disabled: bool = False) -> bytes:
+def render(
+    size: str,
+    screen: str,
+    coords: Optional[dict] = None,
+    show_disabled: bool = False,
+    skip_banner: bool = False,
+) -> bytes:
     """Render one screen of one board size. Returns PNG bytes at native resolution.
 
     `coords` overrides the on-disk coordinates without writing them, so the
@@ -337,6 +394,11 @@ def render(size: str, screen: str, coords: Optional[dict] = None, show_disabled:
     `show_disabled` flips every `enabled: false` on for the render only, so an
     element that is switched off can still be seen and positioned. It never
     touches the coordinates the editor will save.
+
+    `skip_banner` omits the team banner, which the board always draws last and
+    therefore on top. Diffing a banner-less render against a full one reveals
+    exactly which pixels the banner covers -- the failure that put "FINAL"
+    underneath the home score. Used by tools/layout_monitor.py.
     """
     m = _SIZE_RE.match(size)
     if not m:
@@ -367,7 +429,7 @@ def render(size: str, screen: str, coords: Optional[dict] = None, show_disabled:
     values = coords if coords is not None else _coords_for(size)
     if show_disabled:
         values = _enable_all(values)
-    layout = Layout(values, width, height)
+    layout = _layout_for(values, width, height)
     colors = Color(_load_json(REPO / "colors" / "scoreboard.json", REPO / "colors" / "scoreboard.example.json"))
     team_colors = Color(_load_json(REPO / "colors" / "teams.json", REPO / "colors" / "teams.example.json"))
 
@@ -397,6 +459,15 @@ def render(size: str, screen: str, coords: Optional[dict] = None, show_disabled:
     bg = colors.color("default.background")
     canvas.Fill(bg["r"], bg["g"], bg["b"])
 
+    # The play-by-play line keeps its scroll position in module globals so it can
+    # animate across frames. That makes repeated renders of the same board drift,
+    # which would show up as a phantom change every time the editor re-previews
+    # and would make the monitor's change detection useless. Rewind it so every
+    # render starts from the same frame.
+    gamerender._play_desc_pos = None
+    gamerender._play_desc_last = None
+    gamerender._play_desc_finished = True
+
     # Mirrors MlbRenderer.__draw_game. text_pos is parked at the canvas width so
     # scrolling text renders at its start position rather than mid-scroll.
     text_pos = width
@@ -411,15 +482,16 @@ def render(size: str, screen: str, coords: Optional[dict] = None, show_disabled:
         gamerender.render_live_game(canvas, layout, colors, scoreboard, text_pos, 0)
 
     # Always last, so it paints over the screen content -- the fixed draw order.
-    teams.render_team_banner(
-        canvas,
-        layout,
-        team_colors,
-        scoreboard.home_team,
-        scoreboard.away_team,
-        show_score=(spec.base != "pregame"),
-        scoreboard_colors=colors,
-    )
+    if not skip_banner:
+        teams.render_team_banner(
+            canvas,
+            layout,
+            team_colors,
+            scoreboard.home_team,
+            scoreboard.away_team,
+            show_score=(spec.base != "pregame"),
+            scoreboard_colors=colors,
+        )
 
     matrix.SwapOnVSync(canvas)
 
