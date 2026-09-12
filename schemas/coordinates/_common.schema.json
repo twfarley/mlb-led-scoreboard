@@ -170,6 +170,17 @@
               "properties": {
                 "due":     { "$ref": "#/$defs/named_point" },
                 "up":      { "$ref": "#/$defs/point" },
+                "scroll":  {
+                  "type": "object",
+                  "description": "Single scrolling 'Due Up: 8. Callahan, 9. Peck, ...' line. When enabled it replaces the stacked leadoff/on_deck/in_hole rows and the Due/Up labels.",
+                  "properties": {
+                    "font_name": { "$ref": "#/$defs/font_name" },
+                    "x":         { "type": "integer" },
+                    "y":         { "type": "integer" },
+                    "width":     { "type": "integer" },
+                    "enabled":   { "type": "boolean" }
+                  }
+                },
                 "divider": {
                   "type": "object",
                   "properties": {

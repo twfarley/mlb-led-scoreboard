@@ -12,6 +12,8 @@ class AtBat:
         self.inHole = game.in_hole()
         self.pitcher = game.pitcher()
         self.batting_order = game.batter_batting_order()
+        self.onDeck_order = game.on_deck_batting_order()
+        self.inHole_order = game.in_hole_batting_order()
         self.avg = game.batter_stat("avg")
         self.home_runs = game.batter_stat("homeRuns")
         self.rbi = game.batter_stat("rbi")

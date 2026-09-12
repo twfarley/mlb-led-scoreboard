@@ -87,6 +87,13 @@
             "x": 70,
             "y": 24
           },
+          "scroll": {
+            "font_name": "5x7",
+            "x": 0,
+            "y": 17,
+            "width": 128,
+            "enabled": true
+          },
           "divider": {
             "draw": false,
             "x": 52,

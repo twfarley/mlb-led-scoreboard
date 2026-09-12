@@ -329,21 +329,41 @@ class Game:
             pass
         return None
 
-    def batter_batting_order(self):
-        """Spot in the order for the current batter, or None."""
+    def batting_order_for(self, player_id):
+        """Spot in the order for a player id, or None.
+
+        battingOrder is a 3-digit string in the boxscore, so "800" is 8th and a
+        pinch hitter in that spot is "801" -- hence the integer division.
+        """
+        if player_id is None:
+            return None
         try:
-            batter_id = self._current_data["liveData"]["linescore"]["offense"]["batter"]["id"]
-            ID = Game._format_id(batter_id)
+            ID = Game._format_id(player_id)
             for side in ("away", "home"):
                 try:
                     order = self._current_data["liveData"]["boxscore"]["teams"][side]["players"][ID]["battingOrder"]
                 except (KeyError, TypeError):
                     continue
-                # battingOrder is a 3-digit string, e.g. "800" == 8th in the order
                 return int(order) // 100
         except (KeyError, TypeError, ValueError):
             pass
         return None
+
+    def __offense_id(self, slot):
+        try:
+            return self._current_data["liveData"]["linescore"]["offense"][slot]["id"]
+        except (KeyError, TypeError):
+            return None
+
+    def batter_batting_order(self):
+        """Spot in the order for the current batter, or None."""
+        return self.batting_order_for(self.__offense_id("batter"))
+
+    def on_deck_batting_order(self):
+        return self.batting_order_for(self.__offense_id("onDeck"))
+
+    def in_hole_batting_order(self):
+        return self.batting_order_for(self.__offense_id("inHole"))
 
     def pitcher_era(self):
         """Season ERA for the current pitcher, as a string, or None."""

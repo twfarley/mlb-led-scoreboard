@@ -146,6 +146,7 @@
     "inning.arrow.down":               { "anchor": "left", "extent": "arrow_down", "note": "size comes from the parent inning.arrow" },
     "inning.break.number":             { "anchor": "left", "extent": "text" },
     "inning.break.text":               { "anchor": "left", "extent": "text" },
+    "inning.break.due_up.scroll":      { "anchor": "left", "extent": "scroll" },
     "inning.break.due_up.due":         { "anchor": "left", "extent": "text" },
     "inning.break.due_up.up":          { "anchor": "left", "extent": "text" },
     "inning.break.due_up.leadoff":     { "anchor": "left", "extent": "scroll" },

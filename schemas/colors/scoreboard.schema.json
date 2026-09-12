@@ -51,7 +51,8 @@
             "text":             { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
             "due_up":           { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
             "due_up_divider":   { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
-            "due_up_names":     { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} }
+            "due_up_names":     { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
+            "inactive":         { "$ref": "#/$defs/color", "default": {"r": 100, "g": 90, "b": 22} }
           },
           "additionalProperties": false
         },

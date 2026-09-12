@@ -53,7 +53,17 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
 
     else:
         # The inning indicator (number + blinking-half arrow) lives in the corner
-        # display below; the break screen shows only the due-up batters here.
+        # display below. Keep the diamond and the out markers on screen through
+        # the break so the board does not visibly lose half its furniture, but draw
+        # them dimmed: between halves of an inning there are no runners and no
+        # outs to report, so showing them lit would be wrong.
+        try:
+            idle = colors.graphics_color("inning.break.inactive")
+        except KeyError:
+            idle = None
+        if idle is not None:
+            _render_bases(canvas, layout, colors, scoreboard.bases, False, 0, override_color=idle)
+            _render_outs(canvas, layout, colors, scoreboard.outs, override_color=idle)
         pos = _render_due_up(canvas, layout, colors, scoreboard.atbat, text_pos)
 
     # Inning indicator (two stacked arrows + number) renders in both branches so
@@ -346,12 +356,17 @@ def __render_pitch_count(canvas, layout, colors, pitches: Pitches):
 
 
 # --------------- bases ---------------
-def _render_bases(canvas, layout, colors, bases: Bases, home_run, animation):
+def _render_bases(canvas, layout, colors, bases: Bases, home_run, animation, override_color=None):
+    """`override_color` draws every base in one colour.
+
+    Used by the inning break, which keeps the diamond on screen for context but
+    dimmed, since nobody is on base between halves of an inning.
+    """
     base_runners = bases.runners
-    base_colors = []
-    base_colors.append(colors.graphics_color("bases.1B"))
-    base_colors.append(colors.graphics_color("bases.2B"))
-    base_colors.append(colors.graphics_color("bases.3B"))
+    if override_color is not None:
+        base_colors = [override_color] * 3
+    else:
+        base_colors = [colors.graphics_color(f"bases.{b}") for b in ("1B", "2B", "3B")]
 
     base_px = []
     base_px.append(layout.coords("bases.1B"))
@@ -395,7 +410,10 @@ def _render_count(canvas, layout, colors, pitches: Pitches):
 
 
 # --------------- outs ---------------
-def __out_colors(colors):
+def __out_colors(colors, override_color=None):
+    if override_color is not None:
+        return [override_color] * 3, [override_color] * 3
+
     outlines = []
     fills = []
     for i in range(3):
@@ -409,14 +427,13 @@ def __out_colors(colors):
     return outlines, fills
 
 
-def _render_outs(canvas, layout, colors, outs):
+def _render_outs(canvas, layout, colors, outs, override_color=None):
     out_px = []
     out_px.append(layout.coords("outs.1"))
     out_px.append(layout.coords("outs.2"))
     out_px.append(layout.coords("outs.3"))
 
-    out_colors = []
-    out_colors, fill_colors = __out_colors(colors)
+    out_colors, fill_colors = __out_colors(colors, override_color)
 
     for out in range(len(out_px)):
         __render_out_circle(canvas, out_px[out], out_colors[out])
@@ -445,7 +462,45 @@ def __fill_out_circle(canvas, out, color):
 
 
 # --------------- inning information ---------------
+def __due_up_line(atbat: AtBat) -> str:
+    """ "Due Up: 8. Callahan, 9. Peck, 1. McGonigle"
+
+    The order number matters more here than during an at-bat: the point of the
+    break screen is who is coming, and the spot in the order is how you know
+    whether the top of the lineup is up next.
+    """
+    parts = []
+    for order, name in (
+        (atbat.batting_order, atbat.batter),
+        (atbat.onDeck_order, atbat.onDeck),
+        (atbat.inHole_order, atbat.inHole),
+    ):
+        if not name:
+            continue
+        parts.append(f"{order}. {name}" if order is not None else name)
+    return "Due Up: " + ", ".join(parts) if parts else ""
+
+
 def _render_due_up(canvas, layout, colors, atbat: AtBat, text_pos):
+    # One scrolling line, when the layout asks for it. The stacked three-line
+    # form below needs a tall block and a big font, which does not suit a board
+    # where the teams already own the bottom half.
+    single = __optional(layout, "inning.break.due_up.scroll")
+    if single is not None:
+        return scrolling_text(
+            canvas,
+            graphics,
+            single["x"],
+            single["y"],
+            single["width"],
+            layout.font("inning.break.due_up.scroll"),
+            colors.graphics_color("inning.break.due_up_names"),
+            colors.graphics_color("default.background"),
+            __due_up_line(atbat),
+            text_pos,
+            center=False,
+        )
+
     batter_font = layout.font("inning.break.due_up.leadoff")
     batter_color = colors.graphics_color("inning.break.due_up_names")
 

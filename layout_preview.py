@@ -471,6 +471,7 @@ def render(
     show_disabled: bool = False,
     skip_banner: bool = False,
     game: Optional[Any] = None,
+    text_pos: Optional[int] = None,
 ) -> bytes:
     """Render one screen of one board size. Returns PNG bytes at native resolution.
 
@@ -486,6 +487,11 @@ def render(
     therefore on top. Diffing a banner-less render against a full one reveals
     exactly which pixels the banner covers -- the failure that put "FINAL"
     underneath the home score. Used by tools/layout_monitor.py.
+
+    `text_pos` overrides the scroll offset. It defaults to the canvas width, which
+    is where the board parks it on the first frame -- correct for change detection,
+    but it leaves a full-width scrolling line entirely off-canvas. Pass 0 to see
+    such a line at its leftmost position.
     """
     m = _SIZE_RE.match(size)
     if not m:
@@ -568,7 +574,7 @@ def render(
 
     # Mirrors MlbRenderer.__draw_game. text_pos is parked at the canvas width so
     # scrolling text renders at its start position rather than mid-scroll.
-    text_pos = width
+    text_pos = width if text_pos is None else text_pos
     if spec.base == "pregame":
         # Config.check_time_format() maps the config's "12h" onto a strftime token
         # before the renderer ever sees it; passing the raw string renders a
