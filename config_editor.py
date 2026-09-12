@@ -30,7 +30,7 @@ import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 # Local imports — reuse the project's own reconciler so the editor enforces the
 # exact same rules as the CLI verifier.
@@ -358,17 +358,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_bytes(self, body, content_type, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        # The preview re-renders on every coordinate nudge; never serve a stale frame.
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _send_file(self, path, content_type):
         try:
             body = Path(path).read_bytes()
         except OSError:
             self._send_json({"error": "not found"}, 404)
             return
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_bytes(body, content_type)
 
     def _read_body(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -407,6 +412,33 @@ class Handler(BaseHTTPRequestHandler):
                     "booleansOnly": True,
                 }
             )
+        if path == "/api/layout/meta":
+            # Everything the layout editor needs to draw boxes: the board sizes,
+            # the screens it can preview, and what `x` means per element.
+            import layout_preview
+
+            return self._send_json(
+                {
+                    "sizes": layout_preview.sizes(),
+                    "screens": layout_preview.screens(),
+                    "anchors": load_json(SCHEMAS_DIR / "coordinates" / "_anchors.json")["anchors"],
+                }
+            )
+        if path == "/api/layout/preview":
+            # Rendered by the real renderers at native resolution (1px per LED);
+            # the browser upscales by an integer factor to keep the pixel grid true.
+            import layout_preview
+
+            query = parse_qs(urlparse(self.path).query)
+            size = (query.get("size") or ["w128h64"])[0]
+            screen = (query.get("screen") or ["live"])[0]
+            try:
+                return self._send_bytes(layout_preview.render(size, screen), "image/png")
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, 400)
+            except Exception as exc:
+                LOGGER.exception("preview render failed")
+                return self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 500)
         if path == "/api/line_score":
             return self._send_json(get_line_score())
         if path == "/api/service":

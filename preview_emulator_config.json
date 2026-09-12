@@ -1,0 +1,13 @@
+{
+  "_comment": "Used only by layout_preview.py. Renders at native board resolution (pixel_size 1, no outline/glow) so the editor can upscale by an integer factor and keep a true pixel grid. Do NOT name this config*.json - validate_config.py treats those as custom board configs and strips unknown keys.",
+  "pixel_outline": 0,
+  "pixel_size": 1,
+  "pixel_style": "square",
+  "pixel_glow": 0,
+  "display_adapter": "raw",
+  "allow_adapter_fallback": false,
+  "icon_path": null,
+  "emulator_title": null,
+  "suppress_font_warnings": true,
+  "log_level": "error"
+}
