@@ -24,10 +24,16 @@ import json
 import re
 from collections import namedtuple
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 REPO = Path(__file__).parent
 EMULATOR_CONFIG = REPO / "preview_emulator_config.json"
+ANCHORS_FILE = REPO / "schemas" / "coordinates" / "_anchors.json"
+
+# Characters assumed when sizing a text box whose real width depends on live
+# data. Such elements are returned with dynamic=True so the UI can show the box
+# as approximate rather than pretending it is exact.
+NOMINAL_CHARS = 4
 
 # A screen is one branch of MlbRenderer.__draw_game, plus the always-on-top team
 # banner. `timecode=None` means "latest", which for these games is Final.
@@ -105,6 +111,133 @@ def _build_game(fixture: Fixture):
 
     _game_cache[key] = game
     return game
+
+
+def _anchor_meta() -> dict:
+    return dict(json.loads(ANCHORS_FILE.read_text()))
+
+
+def _resolve(values: dict, keypath: str) -> Optional[dict]:
+    node: Any = values
+    for part in keypath.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node if isinstance(node, dict) else None
+
+
+def _box_for(keypath, coords, meta, layout, board_width, chars):
+    """Bounding box (x0, y0, x1, y1) in board pixels, or None if unplaceable.
+
+    The anchor rules live here, in one place, rather than being reimplemented in
+    the browser -- a second copy would drift from the renderer just as surely as
+    a JS reimplementation of the board would.
+    """
+    anchor, extent = meta["anchor"], meta["extent"]
+    x, y = coords.get("x"), coords.get("y")
+
+    if extent in ("box", "image"):
+        return (x, y, x + coords["width"] - 1, y + coords["height"] - 1)
+    if extent in ("square", "diamond"):
+        return (x, y, x + coords["size"], y + coords["size"])
+    if extent == "vline":
+        return (x, coords["y_start"], x, coords["y_end"])
+    if extent == "squares":
+        size, ys = coords["size"], coords["squares"]
+        return (x, min(ys), x + size - 1, max(ys) + size - 1)
+    if extent == "column" or anchor == "none":
+        return None
+
+    try:
+        font = layout.font(keypath)
+        fw, fh = font["size"]["width"], font["size"]["height"]
+    except Exception:
+        fw, fh = 4, 6
+
+    if extent in ("arrow_up", "arrow_down"):
+        size = layout.coords("inning.arrow")["size"]
+        if extent == "arrow_up":
+            return (x - size + 1, y, x + size - 1, y + size - 1)
+        return (x - size + 1, y - size + 1, x + size - 1, y)
+
+    if extent == "scroll":
+        # A scroll window is a fixed clip region, so this one is exact.
+        return (x, y - fh + 1, x + coords.get("width", board_width) - 1, y)
+
+    # extent == "text": y is a BASELINE, so the box rises fh-1 above it.
+    w = max(1, chars) * fw
+    if anchor == "center":
+        x0 = x - w // 2
+    elif anchor == "right":
+        x0 = x - w + 1
+    elif anchor == "board-right":
+        x0 = board_width - w
+    else:
+        x0 = x
+    return (x0, y - fh + 1, x0 + w - 1, y)
+
+
+def elements(size: str, screen: str) -> list[dict]:
+    """Every element drawn on `screen`, with a bounding box for each.
+
+    Only elements the screen actually draws are returned: the coordinates file
+    holds all screens' elements at once, and showing them together is both
+    unreadable and misleading -- it invites moving something into space that is
+    only free on the screen you happen to be looking at.
+    """
+    m = _SIZE_RE.match(size)
+    if not m:
+        raise ValueError(f"bad size {size!r}, expected e.g. 'w128h64'")
+    width, height = int(m.group(1)), int(m.group(2))
+
+    _force_emulation()
+    from data.config.layout import Layout
+
+    meta_doc = _anchor_meta()
+    anchors = meta_doc["anchors"]
+    prefixes = meta_doc["screens"].get(screen)
+    if prefixes is None:
+        raise ValueError(f"unknown screen {screen!r}, expected one of {sorted(meta_doc['screens'])}")
+
+    values = _coords_for(size)
+    layout = Layout(values, width, height)
+
+    out = []
+    for keypath in sorted(anchors):
+        if not any(keypath.startswith(p) for p in prefixes):
+            continue
+        coords = _resolve(values, keypath)
+        if coords is None:
+            continue
+        meta = anchors[keypath]
+        try:
+            box = _box_for(keypath, coords, meta, layout, width, NOMINAL_CHARS)
+        except (KeyError, TypeError):
+            continue
+        if box is None:
+            continue
+
+        try:
+            font = layout.font(keypath)
+            font_info = {"width": font["size"]["width"], "height": font["size"]["height"]}
+        except Exception:
+            font_info = None
+
+        out.append(
+            {
+                "keypath": keypath,
+                "anchor": meta["anchor"],
+                "extent": meta["extent"],
+                "note": meta.get("note"),
+                "coords": coords,
+                "box": list(box),
+                # Text width depends on live data, so the box is indicative only.
+                "dynamic": meta["extent"] == "text",
+                "enabled": coords.get("enabled"),
+                "font": font_info,
+            }
+        )
+    return out
 
 
 def render(size: str, screen: str) -> bytes:
