@@ -124,3 +124,44 @@ class TestNoiseControl(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOverlapDetection(unittest.TestCase):
+    """The deep check exists because colour-diffing has a blind spot.
+
+    A team name and its line score are drawn in the same team text colour, so
+    where they overlap the pixel is identical whichever drew it. w128h32 shipped
+    that way and every colour-based check reported clean.
+    """
+
+    SIZE = "w128h32"
+
+    def setUp(self):
+        self.fixed = layout_preview._coords_for(self.SIZE)
+        self.broken = copy.deepcopy(self.fixed)
+        del self.broken["teams"]["name"]["max_width"]
+
+    def overlaps(self, coords):
+        with mock.patch.object(layout_preview, "_coords_for", lambda size: coords):
+            layout_preview._layout_pool.clear()
+            elements = layout_preview.elements(self.SIZE, "live")
+            found = monitor.check_overlap(self.SIZE, "live", elements, monitor._background(self.SIZE))
+        layout_preview._layout_pool.clear()
+        return found
+
+    def test_current_layout_has_no_overlaps(self):
+        self.assertEqual([f["detail"] for f in self.overlaps(self.fixed)], [])
+
+    def test_catches_the_team_name_over_the_line_score(self):
+        found = self.overlaps(self.broken)
+        pairs = [set(f["elements"]) for f in found]
+        self.assertIn({"teams.name.home", "teams.line_score.home"}, pairs)
+
+    def test_a_panel_under_its_own_text_is_not_an_overlap(self):
+        """The team banner exists to sit beneath the names and scores."""
+        for finding in self.overlaps(self.broken):
+            for keypath in finding["elements"]:
+                self.assertFalse(
+                    keypath.startswith("teams.background") or keypath.startswith("teams.accent"),
+                    f"{keypath} is a panel and should not be reported",
+                )

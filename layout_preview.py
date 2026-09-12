@@ -89,12 +89,18 @@ _LAYOUT_STATES = ("nohit", "perfect_game", "warmup")
 
 # Layout owns a per-instance BDF font cache, and loading a font costs ~28ms, so
 # building a fresh Layout per render dominates the time (~390ms). Coordinates are
-# usually unchanged between renders -- the monitor reuses them for a whole cycle,
-# and the editor only alters one value per edit -- so key a small pool on the
-# coordinates themselves. Bounded, because the editor produces a new variant on
-# every drag.
-_LAYOUT_POOL_MAX = 8
+# usually unchanged between renders, so key a pool on the coordinates themselves.
+#
+# The pool has to be generous: the monitor's deep check renders each element with
+# every other element displaced, which is one distinct coordinate set per element
+# per board size. Those sets are deterministic, so they are all cache hits from
+# the second cycle onwards.
+_LAYOUT_POOL_MAX = 512
 _layout_pool: dict[tuple, Any] = {}
+
+# Fonts are immutable and keyed only by name, so every Layout can share one cache
+# instead of reloading the same BDF per instance.
+_font_cache: dict = {}
 
 
 def _layout_for(values: dict, width: int, height: int):
@@ -107,6 +113,10 @@ def _layout_for(values: dict, width: int, height: int):
     if len(_layout_pool) >= _LAYOUT_POOL_MAX:
         _layout_pool.pop(next(iter(_layout_pool)))
     layout = Layout(values, width, height)
+    # Layout.__init__ eagerly loads the default font into its own dict; fold that
+    # into the shared cache, then let this instance read from the shared one.
+    _font_cache.update(layout.font_cache)
+    layout.font_cache = _font_cache
     _layout_pool[key] = layout
     return layout
 

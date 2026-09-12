@@ -17,10 +17,18 @@ The checks are aimed at the failure modes this layout has actually produced:
               Softened for text, whose BDF cell carries a descent most glyphs
               never use, and skipped for anything switched off.
 
-  collision   Two elements overlap. Only reported between exact extents:
-              text widths depend on live data and a BDF cell is taller than the
-              glyphs in it, so text-box overlap is routine and says nothing. An
-              earlier version reported 187 of those on one board.
+  collision   Two elements' nominal boxes overlap. Only reported between exact
+              extents: text widths depend on live data and a BDF cell is taller
+              than the glyphs in it, so text-box overlap is routine and says
+              nothing. An earlier version reported 187 of those on one board.
+
+  overlap     Two elements claiming the same pixels, text included (--deep).
+              Renders each element with every other one displaced off-panel to get
+              the pixels it claims free of occlusion and draw order, then
+              intersects those claims. Colour-diffing cannot do this job: a team
+              name and its line score share the team's text colour, so where they
+              overlapped on w128h32 the pixel was white either way and the two
+              renders were identical. Costs one render per element.
 
   changed     The render differs from the previous cycle. On live data that is
               usually just the game moving on, but it is how a layout fault that
@@ -97,15 +105,35 @@ def _attribute(points: set, elements: list) -> dict:
     return hits
 
 
-def _renders(el) -> bool:
+def _renders(el, stored=None) -> bool:
     """Whether the board will actually draw this element.
 
     Elements are switched off two ways: an `enabled` flag, and `draw` on the
-    due-up divider. Several layouts also park unsupported features off-panel
-    (w32h32 puts atbat.batter at x=33 on a 32-wide board), which is deliberate
-    -- but that only stays quiet if the off switch is respected first.
+    due-up divider. Both often sit on the GROUP rather than the leaf --
+    `teams.record.enabled` is false while `teams.record.away` carries only x/y --
+    so walk the ancestors too. Missing that had the deep check reporting the team
+    name as covering a record that is never drawn.
+
+    Several layouts also park unsupported features off-panel (w32h32 puts
+    atbat.batter at x=33 on a 32-wide board), which is deliberate -- but that only
+    stays quiet if the off switch is respected first.
     """
-    coords = el.get("coords") or {}
+    if not _switched_on(el.get("coords") or {}):
+        return False
+    if stored is None:
+        return True
+
+    node = stored
+    for part in el["keypath"].split("."):
+        if not isinstance(node, dict) or part not in node:
+            break
+        if not _switched_on(node):
+            return False
+        node = node[part]
+    return True
+
+
+def _switched_on(coords) -> bool:
     return bool(coords.get("enabled") is not False and coords.get("draw") is not False)
 
 
@@ -187,9 +215,10 @@ def check_out_of_bounds(size, screen, elements, bg, game=None) -> list:
     if m is None:
         return []
     w, h = int(m.group(1)), int(m.group(2))
+    stored = layout_preview._coords_for(size)
     out = []
     for el in elements:
-        if not el.get("box") or not _renders(el):
+        if not el.get("box") or not _renders(el, stored):
             continue
         x0, y0, x1, y1 = el["box"]
         # For text, the BDF cell includes a descent that most glyphs never use,
@@ -232,7 +261,8 @@ def check_collisions(size, screen, elements, bg, game=None) -> list:
     this check produced 187 of them on one board.
     """
     out = []
-    boxed = [e for e in elements if e.get("box") and _renders(e) and e["extent"] in EXACT_EXTENTS]
+    stored = layout_preview._coords_for(size)
+    boxed = [e for e in elements if e.get("box") and _renders(e, stored) and e["extent"] in EXACT_EXTENTS]
     for i, a in enumerate(boxed):
         for b in boxed[i + 1 :]:
             # Siblings under one parent (bases.1B/2B/3B, outs.1/2/3, the due-up
@@ -276,7 +306,142 @@ def _intersect(a, b):
     return [x0, y0, x1, y1] if x0 <= x1 and y0 <= y1 else None
 
 
+def _displace(coords, keypath):
+    """A copy of `coords` with one element pushed far off the panel.
+
+    Rendering with and without an element is the only reliable way to learn what
+    it actually covers: text widths depend on live data, so a nominal box cannot
+    tell you. The team name overlapping the line score on w128h32 sat entirely
+    inside both elements' nominal boxes without those boxes intersecting.
+    """
+    import copy
+
+    node = coords
+    parts = keypath.split(".")
+    for part in parts[:-1]:
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    if not isinstance(node, dict) or parts[-1] not in node:
+        return None
+
+    out = copy.deepcopy(coords)
+    target = out
+    for part in parts[:-1]:
+        target = target[part]
+    target = target[parts[-1]]
+    if not isinstance(target, dict):
+        return None
+
+    away = 1000  # any board is at most 192 wide
+    moved = False
+    for key in ("x", "y"):
+        if isinstance(target.get(key), int):
+            target[key] += away
+            moved = True
+    for key in ("y_start", "y_end"):
+        if isinstance(target.get(key), int):
+            target[key] += away
+            moved = True
+    if isinstance(target.get("squares"), list):
+        target["squares"] = [v + away for v in target["squares"]]
+        moved = True
+    return out if moved else None
+
+
+def check_overlap(size, screen, elements, bg, game=None) -> list:
+    """Two elements claiming the same pixels -- text over text included.
+
+    check_overdrawn only compares the board with and without the team banner, so
+    it misses collisions inside a single renderer's draw sequence. teams.py draws
+    the name and then the line score, and on w128h32 the score landed on top of a
+    long name.
+
+    Colour-diffing cannot find that. The name and the score share the team's text
+    colour, so where they overlap the pixel is white either way and the two
+    renders are identical. What works is to render each element with every other
+    element displaced off-panel, giving the pixels it *claims* free of occlusion
+    and free of draw order, and then intersect those claims.
+
+    One render per element, so it is opt-in (--deep). The displaced coordinate
+    sets are deterministic and therefore cached after the first cycle.
+    """
+    import copy
+    from itertools import combinations
+
+    stored = layout_preview._coords_for(size)
+    positioned = [e for e in elements if e.get("box") and _renders(e, stored)]
+    if len(positioned) < 2:
+        return []
+
+    # Displace everything once, then put a single element back for each render.
+    # Building the "all but one" set from scratch per element would be O(n^2)
+    # deep copies of a large document.
+    all_away = stored
+    for el in positioned:
+        candidate = _displace(all_away, el.get("edit_keypath") or el["keypath"])
+        if candidate is not None:
+            all_away = candidate
+
+    claims: dict = {}
+    for el in positioned:
+        keypath = el.get("edit_keypath") or el["keypath"]
+        parts = keypath.split(".")
+        original: Any = stored
+        for part in parts:
+            if not isinstance(original, dict) or part not in original:
+                original = None
+                break
+            original = original[part]
+        if not isinstance(original, dict):
+            continue
+
+        solo = copy.deepcopy(all_away)
+        node = solo
+        for part in parts[:-1]:
+            node = node[part]
+        node[parts[-1]] = copy.deepcopy(original)
+
+        try:
+            img = _image(layout_preview.render(size, screen, solo, game=game))
+        except Exception:
+            continue
+        pixels = _lit(img, bg)
+        if pixels:
+            claims[el["keypath"]] = pixels
+
+    # A filled panel is meant to have content on top of it, so pairs involving one
+    # are not faults -- the team banner exists precisely to sit under the names.
+    panels = {e["keypath"] for e in positioned if e["extent"] in ("box", "image")}
+
+    out = []
+    for a, b in combinations(sorted(claims), 2):
+        if a in panels or b in panels:
+            continue
+        # A parent and its own alternate position, and siblings laid out as a set
+        # (bases.1B/2B/3B), are expected to sit together.
+        if a.startswith(b + ".") or b.startswith(a + "."):
+            continue
+        if _parent(a) == _parent(b):
+            continue
+        shared = claims[a] & claims[b]
+        if not shared:
+            continue
+        out.append(
+            {
+                "check": "overlap",
+                "severity": "high",
+                "pixels": len(shared),
+                "bounds": _bounds(shared),
+                "elements": {a: len(shared), b: len(shared)},
+                "detail": f"{a} and {b} claim the same pixels",
+            }
+        )
+    return out
+
+
 CHECKS = (check_overdrawn, check_out_of_bounds, check_collisions)
+DEEP_CHECKS = CHECKS + (check_overlap,)
 
 
 # ── cycle ────────────────────────────────────────────────────────────────────
@@ -328,7 +493,7 @@ def build_cases(sizes, screens, live_games) -> list:
     return cases
 
 
-def run_cycle(cases, outdir: Path, previous: dict, save_all: bool) -> tuple:
+def run_cycle(cases, outdir: Path, previous: dict, save_all: bool, checks=CHECKS) -> tuple:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     findings = []
     snapshots = {}
@@ -353,7 +518,7 @@ def run_cycle(cases, outdir: Path, previous: dict, save_all: bool) -> tuple:
 
         snapshots[case.snapshot_key] = png
         case_findings = []
-        for check in CHECKS:
+        for check in checks:
             try:
                 case_findings += check(case.size, case.screen, elements, bg, case.game)
             except Exception as exc:
@@ -463,6 +628,11 @@ def main():
     ap.add_argument("--screens", default=None, help="comma-separated screens (default: all)")
     ap.add_argument("--outdir", type=Path, default=DEFAULT_OUTDIR)
     ap.add_argument("--save-all", action="store_true", help="snapshot every case, not just the suspect ones")
+    ap.add_argument(
+        "--deep",
+        action="store_true",
+        help="also detect one element painting over another (one render per element; slow first cycle)",
+    )
     ap.add_argument("--verbose", action="store_true", help="print low-confidence and informational findings too")
     ap.add_argument("--no-live", action="store_true", help="use only the canned fixtures, skip today's games")
     ap.add_argument("--max-games", type=int, default=0, help="cap how many of today's games to check (0 = all)")
@@ -478,6 +648,8 @@ def main():
     print(f"  sizes:   {', '.join(sizes)}")
     print(f"  screens: {', '.join(screens)}")
     print(f"  output:  {args.outdir}")
+    if args.deep:
+        print("  deep: also checking element-over-element (slow on the first cycle)")
     if not args.once:
         print(f"  every {args.interval:g}s — Ctrl-C to stop")
     print()
@@ -501,7 +673,9 @@ def main():
                     live = live[: args.max_games]
 
             cases = build_cases(sizes, screens, live)
-            findings, snapshots, stamp = run_cycle(cases, args.outdir, previous, args.save_all)
+            findings, snapshots, stamp = run_cycle(
+                cases, args.outdir, previous, args.save_all, DEEP_CHECKS if args.deep else CHECKS
+            )
 
             if args.update_baseline:
                 save_baseline(baseline_path, findings)
