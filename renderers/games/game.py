@@ -1,3 +1,5 @@
+import time
+
 from bullpen.util import scrolling_text
 
 from data import status
@@ -12,6 +14,11 @@ from data.scoreboard.pitches import Pitches
 from data.plays import PLAY_RESULTS
 
 from renderers.games import nohitter
+
+# Scroll state for the optional play-by-play description.
+_play_desc_pos = None
+_play_desc_last = None
+_play_desc_finished = False
 
 
 def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboard, text_pos, animation_time):
@@ -38,18 +45,28 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
         _render_outs(canvas, layout, colors, scoreboard.outs)
         _render_bases(canvas, layout, colors, scoreboard.bases, scoreboard.homerun(), (animation_time % 16) // 5)
 
-        _render_inning_display(canvas, layout, colors, scoreboard.inning)
+        # Optional full play-by-play line (no-op unless the layout enables it).
+        desc_coords = __optional(layout, "atbat.play_description")
+        description = scoreboard.play_description
+        if desc_coords is not None and not description and desc_coords.get("situation_fallback", False):
+            description = __situation_text(scoreboard)
+        pos = max(pos, __render_play_description(canvas, layout, colors, description))
 
     else:
-        _render_inning_break(canvas, layout, colors, scoreboard.inning)
+        # The inning indicator (number + blinking-half arrow) lives in the corner
+        # display below; the break screen shows only the due-up batters here.
         pos = _render_due_up(canvas, layout, colors, scoreboard.atbat, text_pos)
+
+    # Inning indicator (two stacked arrows + number) renders in both branches so
+    # the upcoming-inning blink stays visible during a break.
+    _render_inning_display(canvas, layout, colors, scoreboard.inning)
 
     return pos
 
 
 # --------------- at-bat ---------------
 def _render_at_bat(canvas, layout, colors, atbat: AtBat, text_pos, play_result, animation, pitches: Pitches):
-    plength = __render_pitcher_text(canvas, layout, colors, atbat.pitcher, pitches, text_pos)
+    plength = __render_pitcher_text(canvas, layout, colors, atbat, pitches, text_pos)
     __render_pitch_text(canvas, layout, colors, pitches)
     __render_pitch_count(canvas, layout, colors, pitches)
     results = list(PLAY_RESULTS.keys())
@@ -58,7 +75,7 @@ def _render_at_bat(canvas, layout, colors, atbat: AtBat, text_pos, play_result, 
             __render_play_result(canvas, layout, colors, play_result)
         return plength
     else:
-        blength = __render_batter_text(canvas, layout, colors, atbat.batter, text_pos)
+        blength = __render_batter_text(canvas, layout, colors, atbat, text_pos)
         return max(plength, blength)
 
 
@@ -86,45 +103,219 @@ def __render_play_result(canvas, layout, colors, play_result):
     graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, text)
 
 
-def __render_batter_text(canvas, layout, colors, batter, text_pos):
+def __optional(layout, key):
+    """Return coords for an optional element, or None when absent/disabled.
+
+    Keeps every addition opt-in: layouts that don't define the key (or set
+    "enabled": false) render exactly as they did before.
+    """
+    try:
+        coords = layout.coords(key)
+    except KeyError:
+        return None
+    return coords if coords.get("enabled", False) else None
+
+
+def __batter_stat_positions(layout, atbat: AtBat):
+    """Lay AVG / HR / RBI out right-to-left so they always fit the panel."""
+    font = layout.font("atbat.batter_stats")
+    fw = font["size"]["width"]
+    right = layout.width - 1
+
+    rbi = str(atbat.rbi) if atbat.rbi is not None else None
+    hr = str(atbat.home_runs) if atbat.home_runs is not None else None
+    avg = str(atbat.avg) if atbat.avg is not None else None
+
+    rbi_lbl_x = right - 3 * fw
+    rbi_val_x = rbi_lbl_x - (len(rbi) * fw if rbi else 0)
+    hr_lbl_x = (rbi_val_x - fw) - 2 * fw
+    hr_val_x = hr_lbl_x - (len(hr) * fw if hr else 0)
+    avg_lbl_x = (hr_val_x - fw) - 3 * fw
+    avg_val_x = avg_lbl_x - (len(avg) * fw if avg else 0)
+
+    return {
+        "font": font,
+        "avg": avg,
+        "avg_val_x": avg_val_x,
+        "avg_lbl_x": avg_lbl_x,
+        "hr": hr,
+        "hr_val_x": hr_val_x,
+        "hr_lbl_x": hr_lbl_x,
+        "rbi": rbi,
+        "rbi_val_x": rbi_val_x,
+        "rbi_lbl_x": rbi_lbl_x,
+        "leftmost_x": avg_val_x,
+    }
+
+
+def __render_batter_stats(canvas, layout, colors, atbat: AtBat):
+    """Season AVG / HR / RBI on the batter row. No-op unless enabled."""
+    coords = __optional(layout, "atbat.batter_stats")
+    if coords is None:
+        return
+    pos = __batter_stat_positions(layout, atbat)
+    font = pos["font"]
+    y = coords["y"]
+    val_color = colors.graphics_color("atbat.batter_stats")
+    lbl_color = colors.graphics_color("atbat.batter_stats_label")
+
+    for key, label in (("avg", "AVG"), ("hr", "HR"), ("rbi", "RBI")):
+        if pos[key] and pos[f"{key}_val_x"] >= 0:
+            graphics.DrawText(canvas, font["font"], pos[f"{key}_val_x"], y, val_color, pos[key])
+            graphics.DrawText(canvas, font["font"], pos[f"{key}_lbl_x"], y, lbl_color, label)
+
+
+def __render_batter_order(canvas, layout, colors, atbat: AtBat):
+    """Batting-order number ("7.") ahead of the batter name.
+
+    Returns the x the name should start at, or None when not enabled.
+    """
+    coords = __optional(layout, "atbat.batter_order")
+    if coords is None or atbat.batting_order is None:
+        return None
+    font = layout.font("atbat.batter_order")
+    color = colors.graphics_color("atbat.batter_stats")
+    text = f"{atbat.batting_order}."
+    graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, text)
+    return coords["x"] + len(text) * font["size"]["width"]
+
+
+def __situation_text(scoreboard: Scoreboard) -> str:
+    """Compact 'what's happening' line, used when there's no play description."""
+    half = "Top" if scoreboard.inning.state == Inning.TOP else "Bot"
+    parts = [
+        f"{half} {scoreboard.inning.number}",
+        f"{scoreboard.pitches.balls}-{scoreboard.pitches.strikes}",
+        f"{scoreboard.outs.number} out",
+    ]
+    on = [name for name, runner in zip(("1B", "2B", "3B"), scoreboard.bases.runners) if runner]
+    if on:
+        parts.append("+".join(on))
+    return "  \u00b7  ".join(parts)
+
+
+def __render_play_description(canvas, layout, colors, description):
+    """Scroll the full play-by-play description once, then stop blocking rotation."""
+    global _play_desc_pos, _play_desc_last, _play_desc_finished
+    coords = __optional(layout, "atbat.play_description")
+    if coords is None:
+        return 0
+    if not description:
+        _play_desc_pos = None
+        _play_desc_last = None
+        _play_desc_finished = True
+        return 0
+
+    font = layout.font("atbat.play_description")
+    color = colors.graphics_color("atbat.play_result")
+    bgcolor = colors.graphics_color("default.background")
+    x, y, w = coords["x"], coords["y"], coords["width"]
+    total_px = len(description) * font["size"]["width"]
+
+    if description != _play_desc_last:
+        _play_desc_pos = x + w
+        _play_desc_last = description
+        _play_desc_finished = False
+
+    scrolling_text(
+        canvas,
+        graphics,
+        x,
+        y,
+        w,
+        font,
+        color,
+        bgcolor,
+        description,
+        _play_desc_pos,
+        center=False,
+        force_scroll=True,
+    )
+
+    _play_desc_pos -= 1
+    if _play_desc_pos + total_px < 0:
+        _play_desc_pos = x + w
+        _play_desc_finished = True
+
+    return 0 if _play_desc_finished else total_px
+
+
+def __render_batter_text(canvas, layout, colors, atbat: AtBat, text_pos):
     coords = layout.coords("atbat.batter")
     color = colors.graphics_color("atbat.batter")
     font = layout.font("atbat.batter")
     bgcolor = colors.graphics_color("default.background")
     offset = coords.get("offset", 0)
+    fw = font["size"]["width"]
+
+    __render_batter_stats(canvas, layout, colors, atbat)
+
+    # With a batting-order number the "AB:" label is redundant, so it is
+    # replaced by the number and the name starts after it.
+    order_x = __render_batter_order(canvas, layout, colors, atbat)
+    name_x = coords["x"] + fw * 3 if order_x is None else order_x + fw - 2
+
+    width = coords["width"]
+    if __optional(layout, "atbat.batter_stats") is not None:
+        width = max(10, __batter_stat_positions(layout, atbat)["leftmost_x"] - name_x - 5)
+
     pos = scrolling_text(
         canvas,
         graphics,
-        coords["x"] + font["size"]["width"] * 3,
+        name_x,
         coords["y"],
-        coords["width"],
+        width,
         font,
         color,
         bgcolor,
-        batter,
+        atbat.batter,
         text_pos + offset,
         center=False,
     )
-    graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, "AB:")
+    if order_x is None:
+        graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, "AB:")
     return pos
 
 
-def __render_pitcher_text(canvas, layout, colors, pitcher, pitches: Pitches, text_pos):
+def __render_pitcher_text(canvas, layout, colors, atbat: AtBat, pitches: Pitches, text_pos):
     coords = layout.coords("atbat.pitcher")
     color = colors.graphics_color("atbat.pitcher")
     font = layout.font("atbat.pitcher")
     bgcolor = colors.graphics_color("default.background")
+    fw = font["size"]["width"]
+    pitcher = atbat.pitcher
 
     pitch_count = layout.coords("atbat.pitch_count")
     if pitch_count["enabled"] and pitch_count["append_pitcher_name"]:
         pitcher += f" ({pitches.pitch_count})"
 
+    # Optional season ERA, aligned with the batter's stat column above it.
+    stats = __optional(layout, "atbat.batter_stats")
+    era_x = None
+    if stats is not None and stats.get("show_era", False) and atbat.pitcher_era:
+        pos_info = __batter_stat_positions(layout, atbat)
+        lbl_font = pos_info["font"]
+        ew = lbl_font["size"]["width"]
+        era_x = pos_info["leftmost_x"]
+        graphics.DrawText(canvas, lbl_font["font"], era_x, coords["y"], color, atbat.pitcher_era)
+        graphics.DrawText(
+            canvas,
+            lbl_font["font"],
+            era_x + len(atbat.pitcher_era) * ew,
+            coords["y"],
+            colors.graphics_color("atbat.batter_stats_label"),
+            "ERA",
+        )
+
+    name_x = coords["x"] if era_x is not None else coords["x"] + fw * 2
+    width = max(fw, era_x - name_x - fw - 1) if era_x is not None else coords["width"]
+
     pos = scrolling_text(
         canvas,
         graphics,
-        coords["x"] + font["size"]["width"] * 2,
+        name_x,
         coords["y"],
-        coords["width"],
+        width,
         font,
         color,
         bgcolor,
@@ -132,7 +323,8 @@ def __render_pitcher_text(canvas, layout, colors, pitcher, pitches: Pitches, tex
         text_pos,
         center=False,
     )
-    graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, "P:")
+    if era_x is None:
+        graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, "P:")
     return pos
 
 
@@ -262,21 +454,6 @@ def __fill_out_circle(canvas, out, color):
 
 
 # --------------- inning information ---------------
-def _render_inning_break(canvas, layout, colors, inning: Inning):
-
-    text_font = layout.font("inning.break.text")
-    num_font = layout.font("inning.break.number")
-    text_coords = layout.coords("inning.break.text")
-    num_coords = layout.coords("inning.break.number")
-    color = colors.graphics_color("inning.break.text")
-    text = inning.state
-    if text == "Middle":
-        text = "Mid"
-    num = inning.ordinal
-    graphics.DrawText(canvas, text_font["font"], text_coords["x"], text_coords["y"], color, text)
-    graphics.DrawText(canvas, num_font["font"], num_coords["x"], num_coords["y"], color, num)
-
-
 def _render_due_up(canvas, layout, colors, atbat: AtBat, text_pos):
     batter_font = layout.font("inning.break.due_up.leadoff")
     batter_color = colors.graphics_color("inning.break.due_up_names")
@@ -349,35 +526,47 @@ def _render_due_up(canvas, layout, colors, atbat: AtBat, text_pos):
 
 
 def _render_inning_display(canvas, layout, colors, inning: Inning):
-    __render_number(canvas, layout, colors, inning)
-    __render_inning_half(canvas, layout, colors, inning)
+    __render_inning_arrows(canvas, layout, colors, inning)
+    __render_inning_number(canvas, layout, colors, inning)
 
 
-def __render_number(canvas, layout, colors, inning):
-    number_color = colors.graphics_color("inning.number")
+def __render_inning_arrows(canvas, layout, colors, inning: Inning):
+    arrow_coords = layout.coords("inning.arrow")
+    try:
+        up = layout.coords("inning.arrow.up")
+        down = layout.coords("inning.arrow.down")
+        active = colors.graphics_color("inning.arrow.active")
+        inactive = colors.graphics_color("inning.arrow.inactive")
+    except KeyError:
+        return
+    size = arrow_coords["size"]
+
+    if status.is_inning_break(inning.state):
+        # Blink the upcoming half-inning at 1 Hz: Middle -> next is Bottom (down);
+        # End -> next inning's Top (up).
+        upcoming_is_top = inning.state == Inning.END
+        blink_on = int(time.time()) % 2 == 0
+        up_color = (active if blink_on else inactive) if upcoming_is_top else inactive
+        down_color = inactive if upcoming_is_top else (active if blink_on else inactive)
+    else:
+        is_top = inning.state == Inning.TOP
+        up_color = active if is_top else inactive
+        down_color = inactive if is_top else active
+
+    # Up arrow: tip at (x, y), grows downward
+    for offset in range(size):
+        graphics.DrawLine(canvas, up["x"] - offset, up["y"] + offset, up["x"] + offset, up["y"] + offset, up_color)
+    # Down arrow: tip at (x, y), grows upward
+    for offset in range(size):
+        graphics.DrawLine(
+            canvas, down["x"] - offset, down["y"] - offset, down["x"] + offset, down["y"] - offset, down_color
+        )
+
+
+def __render_inning_number(canvas, layout, colors, inning: Inning):
     coords = layout.coords("inning.number")
     font = layout.font("inning.number")
-    pos_x = coords["x"] - (len(str(inning.number)) * font["size"]["width"])
-    graphics.DrawText(canvas, font["font"], pos_x, coords["y"], number_color, str(inning.number))
-
-
-def __render_inning_half(canvas, layout, colors, inning):
-    font = layout.font("inning.number")
-    num_coords = layout.coords("inning.number")
-    arrow_coords = layout.coords("inning.arrow")
-    inning_size = len(str(inning.number)) * font["size"]["width"]
-    size = arrow_coords["size"]
-    top = inning.state == Inning.TOP
-    if top:
-        x = num_coords["x"] - inning_size + arrow_coords["up"]["x_offset"]
-        y = num_coords["y"] + arrow_coords["up"]["y_offset"]
-        dir = 1
-    else:
-        x = num_coords["x"] - inning_size + arrow_coords["down"]["x_offset"]
-        y = num_coords["y"] + arrow_coords["down"]["y_offset"]
-        dir = -1
-
-    keypath = "inning.arrow.up" if top else "inning.arrow.down"
-    color = colors.graphics_color(keypath)
-    for offset in range(size):
-        graphics.DrawLine(canvas, x - offset, y + (offset * dir), x + offset, y + (offset * dir), color)
+    color = colors.graphics_color("inning.number")
+    num_str = str(inning.number)
+    pos_x = coords["x"] - len(num_str) * font["size"]["width"]
+    graphics.DrawText(canvas, font["font"], pos_x, coords["y"], color, num_str)

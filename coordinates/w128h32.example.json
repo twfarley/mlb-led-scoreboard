@@ -84,14 +84,14 @@
       "y": 8
     },
     "arrow": {
-      "size": 3,
+      "size": 2,
       "up": {
-        "x_offset": -5,
-        "y_offset": -4
+        "x": 119,
+        "y": 1
       },
       "down": {
-        "x_offset": -5,
-        "y_offset": -2
+        "x": 119,
+        "y": 8
       }
     }
   },

@@ -194,10 +194,11 @@
         },
         "arrow": {
           "type": "object",
+          "description": "Two stacked triangles indicating top/bottom of inning. Both render; active half is bright, the other is dim. Tip of each arrow at (x, y).",
           "properties": {
             "size": { "type": "integer" },
-            "up":   { "$ref": "#/$defs/offset" },
-            "down": { "$ref": "#/$defs/offset" }
+            "up":   { "$ref": "#/$defs/point" },
+            "down": { "$ref": "#/$defs/point" }
           }
         }
       }
@@ -253,6 +254,35 @@
             "y":                   { "type": "integer" },
             "enabled":             { "type": "boolean" },
             "append_pitcher_name": { "type": "boolean" }
+          }
+        },
+        "batter_order": {
+          "type": "object",
+          "properties": {
+            "font_name": { "$ref": "#/$defs/font_name" },
+            "x":         { "type": "integer" },
+            "y":         { "type": "integer" },
+            "enabled":   { "type": "boolean" }
+          }
+        },
+        "batter_stats": {
+          "type": "object",
+          "properties": {
+            "font_name": { "$ref": "#/$defs/font_name" },
+            "y":         { "type": "integer" },
+            "enabled":   { "type": "boolean" },
+            "show_era":  { "type": "boolean" }
+          }
+        },
+        "play_description": {
+          "type": "object",
+          "properties": {
+            "font_name":          { "$ref": "#/$defs/font_name" },
+            "x":                  { "type": "integer" },
+            "y":                  { "type": "integer" },
+            "width":              { "type": "integer" },
+            "enabled":            { "type": "boolean" },
+            "situation_fallback": { "type": "boolean" }
           }
         },
         "loop":        { "type": "integer" },

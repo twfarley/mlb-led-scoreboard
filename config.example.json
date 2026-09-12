@@ -12,7 +12,7 @@
     "screens": [
       {
         "kind": "game",
-        "priority": 2,
+        "priority": 4,
         "required_status": "live",
         "teams": [
           "Cubs"
@@ -20,7 +20,18 @@
       },
       {
         "kind": "game",
-        "priority": 1
+        "priority": 3,
+        "required_status": "live"
+      },
+      {
+        "kind": "game",
+        "priority": 2,
+        "required_status": "pregame"
+      },
+      {
+        "kind": "game",
+        "priority": 1,
+        "required_status": "game_over"
       },
       {
         "kind": "standings",
