@@ -55,15 +55,26 @@ Note that pushes to this fork's own `master` are fine: only `readme-toc.yml` run
 
 ### Branches
 
-- `feature/score-bug-128x64` — the 128x64 score-bug / play-by-play work (current).
-  Renamed from `feature/score-bug-plugin`; it uses gated core additions, not a plugin.
-- `feature/config-web-editor` — schema-driven local web config editor. Open as
-  **[PR #765](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard/pull/765)**
-  against upstream `dev`. Maintainers pushed back (they have a static editor at
-  mlb-led-scoreboard.github.io); the unique value is on-device read/write,
-  validation against the real board, and service restart.
-- `feature/homeassistant-plugins` — Home Assistant dashboard plugin (Bullpen).
-- `local/*`, `homekit`, `feature/powerwall` — older experiments.
+`master` is the integration branch and what the Pi runs. Everything below is merged into
+it; the topic branches are kept so individual pieces stay reviewable.
+
+- `master` — upstream v9.2.2 plus all of the below. **Work here** unless you have a
+  reason not to: the layout editor and monitor need the union of the other branches
+  (the anchor metadata references elements that only exist once layout is merged).
+- `feature/layout` — the 128x64 score bug, the two-arrow inning indicator, and the
+  retunes for final / pregame / status / inning-break / no-hitter.
+- `feature/layout-editor` — the WYSIWYG editor and the layout monitor. Kept level with
+  `master`.
+- `feature/homeassistant-plugin` — Home Assistant dashboard plugin (Bullpen). Note the
+  singular: `feature/homeassistant-plugins` was its pre-rebase name and is deleted.
+- `feature/config-web-editor` — schema-driven local web config editor. Was
+  [PR #765](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard/pull/765), now
+  **closed**: maintainers preferred extending their static editor, and upstream's
+  `leagues` key superseded the `sport_ids` option it added.
+- `homekit` — 27 commits that exist nowhere else, ~155 behind upstream. Left alone
+  deliberately; contains API-throttling and caching work with no counterpart in master.
+- Local tags `backup/*` mark pre-rebase tips. They are **not pushed**, so they only
+  exist on this machine.
 
 Maintainers prefer **plugins over core changes**. Core edits are fine on this fork;
 they just cost merge friction and are a harder sell upstream.
@@ -147,7 +158,11 @@ other board sizes render byte-identically:
 - `coordinates/w128h64.example.json` is now the score-bug layout (teams bottom,
   batter/pitcher rows top). The previous layout is in git history:
   `git show cbca405^:coordinates/w128h64.example.json`.
-- `coordinates/w128h64.json.old` is the superseded local override, kept for reference.
+- The superseded local override lived on the Pi as `coordinates/w128h64.old.json` — note the
+  order. That name ENDS in `.json`, and `custom_config_files()` derives the schema from
+  `file.split(".")[0]`, so it resolved to `w128h64.example.json` and was being reconciled and
+  rewritten on every run. It was never a backup. Both it and the real custom file now live in
+  `~/scoreboard-backups/<stamp>/` on the Pi, outside the scanned directory.
 
 Master draws only the **active** inning arrow (`inning.arrow.up/down` are
 `x_offset`/`y_offset` relative to `inning.number`). The old dual bright/dim arrow pair
@@ -239,6 +254,44 @@ global `~/.gitconfig` turns on x509 signing with no `user.signingkey`, so every 
 fails with *"gpg failed to sign the data"*. Note that `git rebase` snapshots the `-S`
 flag into `.git/rebase-merge/gpg_sign_opt` when it starts, so a rebase begun before the
 config change keeps failing; `rm` that file to recover mid-rebase.
+
+## Deploying to the Pi
+
+As of 2026-09-12 the Pi is on **`master`**, which is where all the layout work lives. It was on
+`feature/homeassistant-plugins` — a branch that no longer exists on the fork, since it was rebased
+into `feature/homeassistant-plugin` and merged into `master`. The Pi's local copy is the last one.
+
+```sh
+cd ~/mlb-led-scoreboard
+git pull
+sudo service mlb-scoreboard restart
+sudo journalctl -u mlb-scoreboard -n 40 --no-pager
+```
+
+Check the journal even when `systemctl is-active` says `active`: the unit is `Restart=on-failure`,
+so a crash loop still reports active between attempts. A healthy start logs
+`MLB LED Scoreboard - v9.2.2 (128x64)`.
+
+Three things that bite on a bigger jump:
+
+1. **`master` needs Python 3.10+.** `data/leagues.py` uses `dict[str, str | int]` with no
+   `from __future__ import annotations`, so it is evaluated at import time and 3.9 cannot parse it.
+   Check `venv/bin/python3 -V` first.
+2. **Run `sudo venv/bin/pip install -r requirements.txt`** after crossing a version boundary;
+   v9.2.2 added dependencies older branches never had. Site-packages is root-owned, hence `sudo`.
+3. **A custom `coordinates/<size>.json` silently defeats layout changes.** `validate_config`
+   reconciles a custom file against the example by adding missing keys and deleting unknown ones,
+   but *keeping existing values* — so repositioning an element in the example changes nothing while
+   a custom file exists. Move it out of `coordinates/` (not just rename it — see the naming trap
+   above) and the example becomes the layout. `Config file .../w128h64.json not found. Using
+   default values` in the log confirms it.
+
+`config.json` and `colors/scoreboard.json` are different: keep those, since `validate_config` merges
+new keys into them without disturbing your teams, rotation and colours.
+
+Cannot be reached from inside a Claude Code session — SSH to port 22 is blocked below the Bash
+sandbox, and the ACC domain allowlist only governs proxied HTTP, so adding the Pi's IP does not
+help. `--dangerously-skip-permissions` does not help either. Run Pi commands from a normal terminal.
 
 ## Raspberry Pi
 
