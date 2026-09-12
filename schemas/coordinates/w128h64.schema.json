@@ -80,35 +80,35 @@
         "due_up": {
           "due": {
             "font_name": "5x7",
-            "x": 38,
-            "y": 44
+            "x": 70,
+            "y": 12
           },
           "up": {
-            "x": 38,
-            "y": 56
+            "x": 70,
+            "y": 24
           },
           "divider": {
             "draw": false,
-            "x": 36,
-            "y_start": 32,
-            "y_end": 64
+            "x": 52,
+            "y_start": 28,
+            "y_end": 63
           },
           "loop": 128,
           "leadoff": {
             "font_name": "7x13",
-            "x": 64,
+            "x": 70,
             "y": 42,
-            "width": 64
+            "width": 58
           },
           "on_deck": {
-            "x": 64,
+            "x": 70,
             "y": 52,
-            "width": 64
+            "width": 58
           },
           "in_hole": {
-            "x": 64,
+            "x": 70,
             "y": 62,
-            "width": 64
+            "width": 58
           }
         }
       },
@@ -231,20 +231,20 @@
     "pregame": {
       "scrolling_text": {
         "x": 0,
-        "y": 46,
+        "y": 20,
         "width": 128,
         "warmup": {
           "x": 0,
-          "y": 46,
+          "y": 20,
           "width": 128
         }
       },
       "start_time": {
-        "x": 66,
+        "x": 90,
         "y": 60
       },
       "warmup_text": {
-        "x": 66,
+        "x": 90,
         "y": 60
       }
     },
@@ -281,13 +281,13 @@
     },
     "status": {
       "text": {
-        "x": 64,
-        "y": 46,
+        "x": 90,
+        "y": 42,
         "short_text": false
       },
       "scrolling_text": {
         "x": 0,
-        "y": 58,
+        "y": 20,
         "width": 128
       }
     },

@@ -26,6 +26,32 @@ positive. Use the compare endpoint instead; `diverged` means *not* on upstream:
 gh api repos/MLB-LED-Scoreboard/mlb-led-scoreboard/compare/master...<sha> --jq .status
 ```
 
+### Never push the head branch of an open upstream PR
+
+Upstream's workflows trigger on `pull_request: branches: [dev, master]`, so they run
+**in the upstream repo**, not in this fork, for any open PR whose head branch lives
+here. Pushing such a branch mails a build result to the whole org
+(`mlb-led-scoreboard@noreply.github.com`). That has already happened once —
+`feature/config-web-editor @ 6f80589` — and it is pure noise for maintainers who did
+not ask for it.
+
+`feature/config-web-editor` is the head of **[PR #765](https://github.com/MLB-LED-Scoreboard/mlb-led-scoreboard/pull/765)**.
+Do not push it while that PR is open; put the work on `master` or another branch.
+
+A `pre-push` hook enforces this, and also refuses `upstream` outright. Hooks are not
+tracked by git, so **a fresh clone starts unprotected** — run:
+
+```sh
+tools/install-git-hooks.sh
+```
+
+It reads the blocked list from `git config --get-all fork.noPushBranches`, so add a
+branch when you open a new upstream PR. `git push --no-verify` overrides it, which is
+the right escape hatch when you genuinely mean to update a PR.
+
+Note that pushes to this fork's own `master` are fine: only `readme-toc.yml` runs on
+`push`, and that executes in the fork and notifies nobody but you.
+
 ### Branches
 
 - `feature/score-bug-128x64` — the 128x64 score-bug / play-by-play work (current).

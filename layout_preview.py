@@ -500,6 +500,7 @@ def render(
     from data.scoreboard.inning import Inning
     from data.scoreboard.postgame import Postgame
     from data.scoreboard.pregame import Pregame
+    from bullpen.time_formats import TIME_FORMAT_12H
     from renderers.games import irregular, postgame as postgamerender, pregame as pregamerender, teams
     from renderers.games import game as gamerender
 
@@ -559,7 +560,11 @@ def render(
     # scrolling text renders at its start position rather than mid-scroll.
     text_pos = width
     if spec.base == "pregame":
-        pregamerender.render_pregame(canvas, layout, colors, Pregame(game, "12h"), text_pos, False, False, False)
+        # Config.check_time_format() maps the config's "12h" onto a strftime token
+        # before the renderer ever sees it; passing the raw string renders a
+        # literal "12h:05" and, worse, the wrong text width for layout checks.
+        pregame = Pregame(game, TIME_FORMAT_12H)
+        pregamerender.render_pregame(canvas, layout, colors, pregame, text_pos, False, False, False)
     elif spec.base == "final":
         postgamerender.render_postgame(canvas, layout, colors, Postgame(game), scoreboard, text_pos, False, False)
     elif spec.base == "irregular":

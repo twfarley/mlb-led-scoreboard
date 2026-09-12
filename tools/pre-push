@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# Blocks pushes that would run CI inside the upstream organisation.
+#
+# Upstream's workflows trigger on `pull_request: branches: [dev, master]`, which
+# means they run in MLB-LED-Scoreboard/mlb-led-scoreboard -- not in this fork --
+# for any open PR whose head branch lives here. Pushing to such a branch mails
+# the whole org a build result. That happened once already
+# (feature/config-web-editor @ 6f80589), and it is pure noise for maintainers.
+#
+# Install:   tools/install-git-hooks.sh
+# Configure: git config --add fork.noPushBranches <branch>
+# Override:  git push --no-verify   (only when you actually mean to update a PR)
+
+remote="$1"
+url="$2"
+
+if [ "$remote" = "upstream" ] || [ "$url" = "DISABLE" ]; then
+    echo "pre-push: refusing to push to '$remote'. Work goes to the fork (origin)." >&2
+    exit 1
+fi
+
+blocked=$(git config --get-all fork.noPushBranches 2>/dev/null)
+[ -n "$blocked" ] || exit 0
+
+status=0
+while read -r local_ref _local_sha remote_ref _remote_sha; do
+    [ -n "$remote_ref" ] || continue
+    branch=${remote_ref#refs/heads/}
+
+    for candidate in $blocked; do
+        if [ "$branch" = "$candidate" ]; then
+            echo "pre-push: '$branch' is the head of an open upstream pull request." >&2
+            echo "          Pushing it runs upstream's CI and emails the org." >&2
+            echo "          Push somewhere else, or close the PR first." >&2
+            echo "          Deliberate PR update? git push --no-verify" >&2
+            status=1
+        fi
+    done
+done
+
+exit $status
