@@ -13,11 +13,27 @@ const $ = (id) => document.getElementById(id);
 const state = {
   size: null,
   screen: null,
-  zoom: 8,
+  zoom: "fit",
   elements: [],
   selected: null,
   board: { width: 0, height: 0 },
 };
+
+// Zoom must stay an INTEGER number of screen pixels per LED. A fractional
+// scale resamples the preview and the grid stops lining up with the board,
+// which would make coordinates -- and later, snapping -- untrustworthy.
+function zoomFactor() {
+  if (state.zoom !== "fit") return Number(state.zoom);
+
+  const { width, height } = state.board;
+  if (!width || !height) return 8;
+
+  const wrap = $("stage-wrap");
+  const availableWidth = (wrap ? wrap.clientWidth : window.innerWidth) - 8;
+  const availableHeight = window.innerHeight - $("stage").getBoundingClientRect().top - 80;
+
+  return Math.max(1, Math.min(Math.floor(availableWidth / width), Math.floor(availableHeight / height)));
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,13 +88,24 @@ async function boot() {
   sizeSel.onchange = () => load();
   screenSel.onchange = () => load();
   $("zoom").onchange = () => {
-    state.zoom = Number($("zoom").value);
+    state.zoom = $("zoom").value;
+    localStorage.setItem("layoutZoom", state.zoom);
     paint();
   };
   $("show-boxes").onchange = paint;
   $("show-grid").onchange = paint;
 
-  state.zoom = Number($("zoom").value);
+  const savedZoom = localStorage.getItem("layoutZoom");
+  if (savedZoom && [...$("zoom").options].some((o) => o.value === savedZoom)) {
+    $("zoom").value = savedZoom;
+  }
+  state.zoom = $("zoom").value;
+
+  // "Fit" is measured from the viewport, so it has to be recomputed on resize.
+  window.addEventListener("resize", () => {
+    if (state.zoom === "fit") paint();
+  });
+
   await load();
 }
 
@@ -107,7 +134,7 @@ async function load() {
 // ── painting ─────────────────────────────────────────────────────────────────
 
 function paint() {
-  const z = state.zoom;
+  const z = zoomFactor();
   const { width, height } = state.board;
   if (!width) return;
 
@@ -156,7 +183,7 @@ function paint() {
     }
   }
 
-  $("readout").textContent = `${width}×${height} · ${state.elements.length} elements`;
+  $("readout").textContent = `${width}×${height} · ${state.elements.length} elements · ${z}×`;
 }
 
 function paintList() {
@@ -169,7 +196,7 @@ function paintList() {
     const row = el(
       "li",
       { class: classes.join(" ") },
-      el("span", {}, element.keypath),
+      el("span", { class: "key" }, element.keypath),
       el("span", { class: "where" }, element.enabled === false ? "off" : element.anchor)
     );
     row.onclick = () => select(element.keypath);

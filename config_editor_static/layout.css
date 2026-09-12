@@ -57,6 +57,13 @@ main {
 
 /* ── Stage ─────────────────────────────────────────────────────────────── */
 
+#stage-wrap {
+  min-width: 0;
+  /* A large fixed zoom can exceed the viewport; scroll rather than shrink,
+     since shrinking would mean a fractional scale and a lying pixel grid. */
+  overflow: auto;
+}
+
 #stage {
   position: relative;
   display: inline-block;
@@ -166,9 +173,10 @@ main {
 #list li {
   padding: 6px 8px; font-size: 12.5px; cursor: pointer; border-radius: 5px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  display: flex; justify-content: space-between; gap: 8px;
+  display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
 }
 #list li:hover { background: var(--panel-2); }
 #list li.selected { background: var(--accent); color: #fff; }
 #list li.off { color: var(--muted); }
-#list li .where { font-size: 11px; opacity: .7; }
+#list li .key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#list li .where { font-size: 11px; opacity: .7; white-space: nowrap; flex: none; }
