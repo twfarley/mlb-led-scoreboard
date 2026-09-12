@@ -44,6 +44,7 @@ If you'd like to see support for another set of board dimensions, or have design
 - [Usage](#usage)
   * [Running on Other Platforms](#running-on-other-platforms)
   * [Configuration](#configuration)
+    + [Web Config Editor](#web-config-editor)
   * [Controlling the Display (Screen Rotation)](#controlling-the-display-screen-rotation)
   * [Synchronizing with Broadcasts](#synchronizing-with-broadcasts)
   * [Additional Features](#additional-features)
@@ -264,6 +265,34 @@ See [RGBMatrixEmulator](https://github.com/ty-porter/RGBMatrixEmulator) for emul
 
 A default [`config.example.json`](config.example.json) file is included for reference. Copy this file to `config.json` and modify the values as needed.
 See [`config.schema.json`](config.schema.json) for a schema for configuration files.
+
+You can edit everything below by hand, or use the [Web Config Editor](#web-config-editor) for a friendlier point-and-click experience.
+
+#### Web Config Editor
+
+Rather than hand-editing JSON, you can run a small local web app that presents every option as labeled checkboxes, dropdowns, and sliders. It's driven directly by the config schema, so the same descriptions you see below appear as inline help.
+
+Run it from the project root (in the same virtualenv the scoreboard uses):
+
+```sh
+# Reachable at http://<your-pi>.local/ on your network (port 80 needs sudo)
+sudo venv/bin/python config_editor.py
+
+# Or pick a non-privileged port and open http://<your-pi>.local:8080/
+venv/bin/python config_editor.py --port 8080
+```
+
+Then browse to the address it prints. What it does:
+
+- **Reads your current config if present, otherwise the example.** It loads `config.json` when it exists (falling back to `config.example.json`), and always writes to `config.json` — your existing settings are the starting point, never the bare defaults.
+- **Validates before writing.** Every save is run through the scoreboard's own config parser. If something would stop the board from booting (e.g. a game screen with `priority: 0`, an unknown team name, or no `with_priority: 0` fallback screen), the save is rejected and the exact problem is shown — nothing is written.
+- **Backs up every save.** A timestamped `config.json.bak-…` is written before each change so you can roll back.
+- **Leagues & teams.** The **Leagues** selector at the top maps to [`leagues`](#configuration). Selecting *WBC* additionally lets you pick national teams (Japan, USA, …) in the team pickers.
+- **Display (all layouts).** Four line-score toggles — *Show Hits And Errors*, *Show ABS Challenges*, *Compress Digits*, and *Shorten Team Name On High Line Score* — are written into every `coordinates/*.json` file at once, so the setting applies no matter which panel size you run. Your existing custom layouts are updated in place (only these keys change).
+- **Save & restart.** If the editor detects a running scoreboard service (a systemd unit or launchd label matching `mlb*scoreboard`), it offers a one-click **Save & Restart**. If it can't find one, it saves and reminds you to restart manually. You can force a specific unit name with `--service <name>`.
+
+> [!NOTE]
+> The editor serves an unauthenticated page on your local network — only run it on a network you trust.
 
 ```
 "matrix":
