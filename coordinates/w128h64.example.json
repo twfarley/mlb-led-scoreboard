@@ -150,6 +150,26 @@
       "enabled": false,
       "append_pitcher_name": false
     },
+    "batter_order": {
+      "font_name": "4x6",
+      "x": 1,
+      "y": 10,
+      "enabled": false
+    },
+    "batter_stats": {
+      "font_name": "4x6",
+      "y": 10,
+      "enabled": false,
+      "show_era": false
+    },
+    "play_description": {
+      "font_name": "4x6",
+      "x": 55,
+      "y": 61,
+      "width": 73,
+      "enabled": false,
+      "situation_fallback": false
+    },
     "loop": 68,
     "strikeout": {
       "x": 16,

@@ -255,6 +255,35 @@
             "append_pitcher_name": { "type": "boolean" }
           }
         },
+        "batter_order": {
+          "type": "object",
+          "properties": {
+            "font_name": { "$ref": "#/$defs/font_name" },
+            "x":         { "type": "integer" },
+            "y":         { "type": "integer" },
+            "enabled":   { "type": "boolean" }
+          }
+        },
+        "batter_stats": {
+          "type": "object",
+          "properties": {
+            "font_name": { "$ref": "#/$defs/font_name" },
+            "y":         { "type": "integer" },
+            "enabled":   { "type": "boolean" },
+            "show_era":  { "type": "boolean" }
+          }
+        },
+        "play_description": {
+          "type": "object",
+          "properties": {
+            "font_name":          { "$ref": "#/$defs/font_name" },
+            "x":                  { "type": "integer" },
+            "y":                  { "type": "integer" },
+            "width":              { "type": "integer" },
+            "enabled":            { "type": "boolean" },
+            "situation_fallback": { "type": "boolean" }
+          }
+        },
         "loop":        { "type": "integer" },
         "strikeout":   { "$ref": "#/$defs/play_display" },
         "play_result": { "$ref": "#/$defs/play_display" }

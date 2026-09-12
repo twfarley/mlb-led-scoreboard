@@ -27,13 +27,17 @@ API_FIELDS = (
     + "currentPlay,result,eventType,playEvents,isPitch,pitchData,startSpeed,details,type,code,description,decisions,"
     + "winner,loser,save,id,linescore,outs,balls,strikes,note,inningState,currentInning,currentInningOrdinal,offense,"
     + "batter,inHole,onDeck,first,second,third,defense,pitcher,boxscore,teams,runs,players,seasonStats,pitching,wins,"
-    + "losses,saves,era,hits,errors,stats,pitching,numberOfPitches,weather,condition,temp,wind,metaData,timeStamp,"
+    + "losses,saves,era,hits,errors,stats,pitching,numberOfPitches,batting,avg,homeRuns,rbi,battingOrder,"
+    + "weather,condition,temp,wind,metaData,timeStamp,"
     + "absChallenges,remaining"
 )
 
 SCHEDULE_API_FIELDS = "dates,date,games,status,detailedState,abstractGameState,reason"
 
 GAME_UPDATE_RATE = 10
+
+# Seconds a finished play's description keeps showing before it clears.
+PLAY_DESCRIPTION_HOLD = 15
 
 
 class Game:
@@ -299,6 +303,56 @@ class Game:
         except Exception:
             return ""
 
+    def batter_stat(self, stat):
+        """Season batting stat (avg / homeRuns / rbi) for the current batter."""
+        try:
+            batter_id = self._current_data["liveData"]["linescore"]["offense"]["batter"]["id"]
+            ID = Game._format_id(batter_id)
+            for side in ("away", "home"):
+                try:
+                    stats = self._current_data["liveData"]["boxscore"]["teams"][side]["players"][ID]["seasonStats"][
+                        "batting"
+                    ]
+                except (KeyError, TypeError):
+                    continue
+                return stats.get(stat)
+        except (KeyError, TypeError):
+            pass
+        return None
+
+    def batter_batting_order(self):
+        """Spot in the order for the current batter, or None."""
+        try:
+            batter_id = self._current_data["liveData"]["linescore"]["offense"]["batter"]["id"]
+            ID = Game._format_id(batter_id)
+            for side in ("away", "home"):
+                try:
+                    order = self._current_data["liveData"]["boxscore"]["teams"][side]["players"][ID]["battingOrder"]
+                except (KeyError, TypeError):
+                    continue
+                # battingOrder is a 3-digit string, e.g. "800" == 8th in the order
+                return int(order) // 100
+        except (KeyError, TypeError, ValueError):
+            pass
+        return None
+
+    def pitcher_era(self):
+        """Season ERA for the current pitcher, as a string, or None."""
+        try:
+            pitcher_id = self._current_data["liveData"]["linescore"]["defense"]["pitcher"]["id"]
+            ID = Game._format_id(pitcher_id)
+            for side in ("away", "home"):
+                try:
+                    era = self._current_data["liveData"]["boxscore"]["teams"][side]["players"][ID]["seasonStats"][
+                        "pitching"
+                    ]["era"]
+                except (KeyError, TypeError):
+                    continue
+                return str(era)
+        except (KeyError, TypeError):
+            pass
+        return None
+
     def balls(self):
         return self._current_data["liveData"]["linescore"].get("balls", 0)
 
@@ -370,6 +424,24 @@ class Game:
         ):
             result += "_looking"
         return result
+
+    def current_play_description(self):
+        """Full text of the current play, held briefly after the play clears."""
+        try:
+            desc = (
+                self._current_data["liveData"]["plays"].get("currentPlay", {}).get("result", {}).get("description", "")
+            )
+        except (KeyError, TypeError):
+            desc = ""
+        if desc:
+            self._last_play_description = desc
+            self._last_play_description_time = time.time()
+        if (
+            getattr(self, "_last_play_description", "")
+            and time.time() - getattr(self, "_last_play_description_time", 0) < PLAY_DESCRIPTION_HOLD
+        ):
+            return self._last_play_description
+        return ""
 
     def game_recap_blurb(self):
         return self._blurb_data.recap()

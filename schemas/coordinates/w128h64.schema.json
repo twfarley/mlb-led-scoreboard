@@ -80,6 +80,9 @@
       "pitcher":     { "font_name": "5x7", "x": 1,  "y": 40, "width": 41 },
       "pitch":       { "font_name": "4x6", "x": 1,  "y": 50, "enabled": true,  "mph": true,  "desc_length": "long" },
       "pitch_count": { "font_name": "4x6", "x": 1,  "y": 50, "enabled": false, "append_pitcher_name": false },
+      "batter_order":     { "font_name": "4x6", "x": 1,  "y": 10, "enabled": false },
+      "batter_stats":     { "font_name": "4x6", "y": 10, "enabled": false, "show_era": false },
+      "play_description": { "font_name": "4x6", "x": 55, "y": 61, "width": 73, "enabled": false, "situation_fallback": false },
       "loop": 68,
       "strikeout":   { "x": 16, "y": 60, "desc_length": "long", "enabled": true },
       "play_result": { "x": 16, "y": 60, "desc_length": "long", "enabled": true }

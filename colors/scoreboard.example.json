@@ -147,6 +147,16 @@
       "r": 255,
       "g": 0,
       "b": 0
+    },
+    "batter_stats": {
+      "r": 255,
+      "g": 235,
+      "b": 59
+    },
+    "batter_stats_label": {
+      "r": 80,
+      "g": 70,
+      "b": 20
     }
   },
   "batter_count": {

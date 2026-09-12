@@ -104,7 +104,9 @@
         "pitch":        { "$ref": "#/$defs/color", "default": {"r": 255, "g": 255, "b": 255} },
         "pitch_count":  { "$ref": "#/$defs/color", "default": {"r": 255, "g": 255, "b": 255} },
         "play_result":  { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59}  },
-        "strikeout":    { "$ref": "#/$defs/color", "default": {"r": 255, "g": 0,   "b": 0}   }
+        "strikeout":    { "$ref": "#/$defs/color", "default": {"r": 255, "g": 0,   "b": 0}   },
+        "batter_stats":       { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
+        "batter_stats_label": { "$ref": "#/$defs/color", "default": {"r": 80,  "g": 70,  "b": 20} }
       },
       "additionalProperties": false
     },

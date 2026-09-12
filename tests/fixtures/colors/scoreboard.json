@@ -136,6 +136,16 @@
       "r": 1,
       "g": 2,
       "b": 3
+    },
+    "batter_stats": {
+      "r": 1,
+      "g": 2,
+      "b": 3
+    },
+    "batter_stats_label": {
+      "r": 1,
+      "g": 2,
+      "b": 3
     }
   },
   "batter_count": {
