@@ -353,6 +353,27 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("[config-editor] " + (fmt % args) + "\n")
 
+    def handle_one_request(self):
+        """Turn an HTTPS-to-an-HTTP-port mistake into a readable message.
+
+        Browsers with HTTPS-First Mode (or a stale HSTS entry for localhost)
+        open with a TLS ClientHello. Without this, BaseHTTPRequestHandler tries
+        to parse the handshake as a request line and logs a screenful of binary
+        for every attempt, which says nothing about the actual problem.
+        """
+        peek = getattr(self.rfile, "peek", None)
+        if peek is not None:
+            try:
+                head = peek(3)[:3]
+            except Exception:
+                head = b""
+            # TLS record: content type 0x16 (handshake), version major 0x03.
+            if head[:2] == b"\x16\x03":
+                self.log_message("%s", "received a TLS handshake — this server is plain HTTP. Use http:// not https://")
+                self.close_connection = True
+                return
+        super().handle_one_request()
+
     # -- helpers --
     def _send_json(self, obj, status=200):
         body = json.dumps(obj).encode()
