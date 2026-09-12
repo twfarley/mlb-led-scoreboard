@@ -47,6 +47,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, NamedTuple
 
 from PIL import Image
 
@@ -119,15 +120,15 @@ def _bounds(points) -> list:
 EXACT_EXTENTS = {"square", "diamond", "vline", "squares", "image"}
 
 
-def check_overdrawn(size, screen, elements, bg) -> list:
+def check_overdrawn(size, screen, elements, bg, game=None) -> list:
     """Pixels drawn by the screen and then covered by the team banner.
 
     This is the trustworthy check: it compares real pixels rather than nominal
     boxes, so it does not guess. It is the one that would have caught FINAL
     disappearing under the home score.
     """
-    content_img = _image(layout_preview.render(size, screen, skip_banner=True))
-    full_img = _image(layout_preview.render(size, screen))
+    content_img = _image(layout_preview.render(size, screen, skip_banner=True, game=game))
+    full_img = _image(layout_preview.render(size, screen, game=game))
     cpx, fpx = _pixels(content_img), _pixels(full_img)
 
     # "Covered" means the banner CHANGED a pixel the screen had already drawn --
@@ -180,7 +181,7 @@ def check_overdrawn(size, screen, elements, bg) -> list:
     ]
 
 
-def check_out_of_bounds(size, screen, elements, bg) -> list:
+def check_out_of_bounds(size, screen, elements, bg, game=None) -> list:
     """Elements whose extent leaves the panel, so part of them is cut off."""
     m = layout_preview._SIZE_RE.match(size)
     if m is None:
@@ -222,7 +223,7 @@ def check_out_of_bounds(size, screen, elements, bg) -> list:
     return out
 
 
-def check_collisions(size, screen, elements, bg) -> list:
+def check_collisions(size, screen, elements, bg, game=None) -> list:
     """Overlapping element boxes, reported only where the boxes are exact.
 
     Text and scroll widths depend on live data, and a BDF cell is taller than the
@@ -281,48 +282,100 @@ CHECKS = (check_overdrawn, check_out_of_bounds, check_collisions)
 # ── cycle ────────────────────────────────────────────────────────────────────
 
 
-def run_cycle(sizes, screens, outdir: Path, previous: dict, save_all: bool) -> tuple:
+class Case(NamedTuple):
+    """One thing to render and check."""
+
+    size: str
+    screen: str
+    game: Any = None  # a live Game, or None to use the screen's canned fixture
+    label: str = "fixture"
+
+    @property
+    def key(self) -> str:
+        # Deliberately excludes the label: fingerprints are built from this, and
+        # a baseline keyed per matchup would be worthless by tomorrow.
+        return f"{self.size}/{self.screen}"
+
+    @property
+    def snapshot_key(self) -> str:
+        return f"{self.size}/{self.screen}/{self.label}"
+
+
+def build_cases(sizes, screens, live_games) -> list:
+    """Live games first, then canned fixtures for whatever states are missing.
+
+    Live games are the point -- they carry the data shapes that break layouts,
+    and only real ones produce a two-digit score or a 13-character surname. But
+    at 08:00 every game is Pre-Game, so live coverage alone leaves most of the
+    board unchecked. The fixtures fill the gaps.
+    """
+    cases = []
+    live_screens = set()
+    for game in live_games:
+        screen = layout_preview.screen_for_game(game)
+        if screen not in screens:
+            continue
+        live_screens.add(screen)
+        label = f"{game.away_abbreviation()}@{game.home_abbreviation()}"
+        for size in sizes:
+            cases.append(Case(size, screen, game, label))
+
+    for screen in screens:
+        if screen in live_screens:
+            continue
+        for size in sizes:
+            cases.append(Case(size, screen))
+    return cases
+
+
+def run_cycle(cases, outdir: Path, previous: dict, save_all: bool) -> tuple:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     findings = []
     snapshots = {}
+    backgrounds: dict = {}
 
-    for size in sizes:
-        bg = _background(size)
-        for screen in screens:
-            key = f"{size}/{screen}"
+    for case in cases:
+        bg = backgrounds.setdefault(case.size, _background(case.size))
+        try:
+            png = layout_preview.render(case.size, case.screen, game=case.game)
+            elements = layout_preview.elements(case.size, case.screen)
+        except Exception as exc:
+            findings.append(
+                {
+                    "case": case.key,
+                    "game": case.label,
+                    "check": "render",
+                    "severity": "high",
+                    "detail": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            continue
+
+        snapshots[case.snapshot_key] = png
+        case_findings = []
+        for check in CHECKS:
             try:
-                png = layout_preview.render(size, screen)
-                elements = layout_preview.elements(size, screen)
+                case_findings += check(case.size, case.screen, elements, bg, case.game)
             except Exception as exc:
-                findings.append(
-                    {"case": key, "check": "render", "severity": "high", "detail": f"{type(exc).__name__}: {exc}"}
-                )
-                continue
-
-            snapshots[key] = png
-            case_findings = []
-            for check in CHECKS:
-                try:
-                    case_findings += check(size, screen, elements, bg)
-                except Exception as exc:
-                    case_findings.append(
-                        {"check": check.__name__, "severity": "high", "detail": f"{type(exc).__name__}: {exc}"}
-                    )
-
-            if key in previous and previous[key] != png:
                 case_findings.append(
-                    {"check": "changed", "severity": "info", "detail": "render differs from the previous cycle"}
+                    {"check": check.__name__, "severity": "high", "detail": f"{type(exc).__name__}: {exc}"}
                 )
 
-            for finding in case_findings:
-                finding["case"] = key
-            findings += case_findings
+        if case.snapshot_key in previous and previous[case.snapshot_key] != png:
+            case_findings.append(
+                {"check": "changed", "severity": "info", "detail": "render differs from the previous cycle"}
+            )
 
-            # Keep a picture of anything worth looking at.
-            if save_all or any(f["severity"] in ("high", "medium") for f in case_findings):
-                shot = outdir / stamp / f"{size}_{screen}.png"
-                shot.parent.mkdir(parents=True, exist_ok=True)
-                shot.write_bytes(png)
+        for finding in case_findings:
+            finding["case"] = case.key
+            finding["game"] = case.label
+        findings += case_findings
+
+        # Keep a picture of anything worth looking at.
+        if save_all or any(f["severity"] in ("high", "medium") for f in case_findings):
+            shot = outdir / stamp / f"{case.size}_{case.screen}_{case.label.replace('/', '-')}.png"
+            shot.parent.mkdir(parents=True, exist_ok=True)
+            shot.write_bytes(png)
 
     return findings, snapshots, stamp
 
@@ -374,14 +427,25 @@ def report(findings, stamp, outdir: Path, verbose: bool) -> None:
     summary = " ".join(f"{k}={counts[k]}" for k in sorted(counts, key=lambda s: SEVERITY_ORDER.get(s, 9)))
     print(f"[{stamp}] {len(findings)} finding(s) {summary or '- clean'}")
 
-    for f in sorted(shown, key=lambda f: SEVERITY_ORDER.get(f["severity"], 9)):
-        where = f.get("bounds")
-        els = ", ".join(f.get("elements", {}) or [])
-        line = f"  {f['severity']:<6} {f['case']:<28} {f['check']:<10} {f['detail']}"
-        if els:
-            line += f"\n         -> {els}"
-        if where:
-            line += f"  @ {where}"
+    # The same layout fault shows up once per game, so a live cycle would print
+    # it fifteen times. Collapse identical findings and name the games instead.
+    grouped: dict = {}
+    for f in shown:
+        grouped.setdefault(fingerprint(f), []).append(f)
+
+    for group in sorted(grouped.values(), key=lambda g: SEVERITY_ORDER.get(g[0]["severity"], 9)):
+        f = group[0]
+        games = [g.get("game", "") for g in group if g.get("game") and g["game"] != "fixture"]
+        line = f"  {f['severity']:<6} {f['case']:<28} {f['check']:<14} {f['detail']}"
+        if f.get("elements"):
+            line += f"\n         -> {', '.join(f['elements'])}"
+        if f.get("bounds"):
+            line += f"  @ {f['bounds']}"
+        if len(group) > 1:
+            shown_games = ", ".join(games[:4]) + ("…" if len(games) > 4 else "")
+            line += f"\n         x{len(group)}" + (f" — {shown_games}" if shown_games else "")
+        elif games:
+            line += f"\n         {games[0]}"
         print(line)
 
     log = outdir / "findings.jsonl"
@@ -400,6 +464,9 @@ def main():
     ap.add_argument("--outdir", type=Path, default=DEFAULT_OUTDIR)
     ap.add_argument("--save-all", action="store_true", help="snapshot every case, not just the suspect ones")
     ap.add_argument("--verbose", action="store_true", help="print low-confidence and informational findings too")
+    ap.add_argument("--no-live", action="store_true", help="use only the canned fixtures, skip today's games")
+    ap.add_argument("--max-games", type=int, default=0, help="cap how many of today's games to check (0 = all)")
+    ap.add_argument("--leagues", default="MLB", help="comma-separated leagues to pull games from")
     ap.add_argument("--baseline", type=Path, default=None, help="file of accepted findings to suppress")
     ap.add_argument("--update-baseline", action="store_true", help="accept everything currently reported, then exit")
     args = ap.parse_args()
@@ -407,7 +474,7 @@ def main():
     sizes = args.sizes.split(",") if args.sizes else layout_preview.sizes()
     screens = args.screens.split(",") if args.screens else list(layout_preview.SCREENS)
 
-    print(f"layout monitor: {len(sizes)} size(s) x {len(screens)} screen(s) = {len(sizes) * len(screens)} cases")
+    print(f"layout monitor: {len(sizes)} size(s) x {len(screens)} screen(s)")
     print(f"  sizes:   {', '.join(sizes)}")
     print(f"  screens: {', '.join(screens)}")
     print(f"  output:  {args.outdir}")
@@ -424,7 +491,17 @@ def main():
     try:
         while True:
             started = time.time()
-            findings, snapshots, stamp = run_cycle(sizes, screens, args.outdir, previous, args.save_all)
+            live = []
+            if not args.no_live:
+                try:
+                    live = layout_preview.todays_games(tuple(args.leagues.split(",")))
+                except Exception as exc:
+                    print(f"  could not fetch today's games ({type(exc).__name__}: {exc}); using fixtures only")
+                if args.max_games:
+                    live = live[: args.max_games]
+
+            cases = build_cases(sizes, screens, live)
+            findings, snapshots, stamp = run_cycle(cases, args.outdir, previous, args.save_all)
 
             if args.update_baseline:
                 save_baseline(baseline_path, findings)

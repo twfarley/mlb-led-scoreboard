@@ -152,6 +152,23 @@ class TestScreenVariants(unittest.TestCase):
             png = layout_preview.render("w128h64", name)
             self.assertTrue(png.startswith(b"\x89PNG\r\n"), f"{name} did not render")
 
+    def test_each_size_renders_at_its_own_geometry(self):
+        """The emulator's display adapter is a singleton keyed on nothing.
+
+        Without clearing it, the first size rendered in a process fixed the frame
+        geometry for every later one -- so switching the editor's board dropdown,
+        or sweeping sizes in the monitor, silently returned the wrong picture.
+        """
+        import io
+
+        from PIL import Image
+
+        import layout_preview
+
+        for size in layout_preview.sizes():
+            image = Image.open(io.BytesIO(layout_preview.render(size, "pregame")))
+            self.assertEqual(f"w{image.width}h{image.height}", size)
+
     def test_nohitter_variant_swaps_in_the_alternate_positions(self):
         import layout_preview
 

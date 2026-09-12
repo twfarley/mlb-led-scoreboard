@@ -23,8 +23,9 @@ import io
 import json
 import re
 from collections import namedtuple
+from datetime import datetime
 from pathlib import Path
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional, cast
 
 REPO = Path(__file__).parent
 EMULATOR_CONFIG = REPO / "preview_emulator_config.json"
@@ -78,6 +79,10 @@ SCREENS: dict[str, Screen] = {
 _SIZE_RE = re.compile(r"^w(\d+)h(\d+)$")
 
 _game_cache: dict[str, Any] = {}
+
+# Live Game objects, kept across cycles so the monitor refreshes them rather
+# than rebuilding (and re-fetching) one per pass.
+_live_games: dict[Any, Any] = {}
 
 # Sub-keys that are alternate positions rather than elements of their own.
 _LAYOUT_STATES = ("nohit", "perfect_game", "warmup")
@@ -166,6 +171,77 @@ def _build_game(fixture: Fixture):
 
     _game_cache[key] = game
     return game
+
+
+def screen_for_game(game) -> str:
+    """The screen the board would draw for this game right now.
+
+    Mirrors the branch order in MlbRenderer.__draw_game, so a live case is
+    checked against the same renderer the board would actually use.
+    """
+    from data import status as game_status
+
+    state = game.status()
+    if game_status.is_pregame(state):
+        return "pregame"
+    if game_status.is_complete(state):
+        return "final"
+    if game_status.is_irregular(state):
+        return "irregular"
+    return "live"
+
+
+def todays_games(leagues=("MLB",)) -> list:
+    """Today's games as live Game objects, refreshed in place across calls.
+
+    The canned fixtures cover every screen but only one set of data shapes. Real
+    games are what surface the faults that only appear with particular values --
+    a two-digit score widening a line score, an unusually long player name, an
+    extra-innings "FINAL 14" reaching further than "FINAL" ever does.
+
+    WPBL is left out by default: its adaptor talks to a separate host that is not
+    always reachable, and a monitor should not fail on that.
+    """
+    import data.game
+    from data.leagues import LEAGUES
+
+    MockConfig = namedtuple("MockConfig", ["sync_amount", "api_refresh_rate", "uniform_types"])
+    config = MockConfig(sync_amount=0, api_refresh_rate=10, uniform_types={})
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    games = []
+    for name in leagues:
+        league = LEAGUES.get(name)
+        if league is None:
+            continue
+        try:
+            # data/leagues.py's StatAPI Protocol declares schedule() -> dict, but
+            # statsapi.schedule() returns a list of games. Trust the runtime.
+            scheduled = cast(list, league.statsapi.schedule(today, **league.schedule_params))
+        except Exception:
+            continue
+        for entry in scheduled:
+            game_id = entry["game_id"]
+            cached = _live_games.get(game_id)
+            if cached is not None:
+                # Same object the board would hold, refreshed rather than rebuilt.
+                cached.update(force=True)
+                games.append(cached)
+                continue
+            game = data.game.Game.from_scheduled(
+                {
+                    "league": league,
+                    "game_id": game_id,
+                    "game_date": entry["game_date"],
+                    "national_broadcasts": entry.get("national_broadcasts") or [],
+                    "series_status": entry.get("series_status") or "",
+                },
+                config,
+            )
+            if game is not None:
+                _live_games[game_id] = game
+                games.append(game)
+    return games
 
 
 def _enable_all(values: dict) -> dict:
@@ -384,6 +460,7 @@ def render(
     coords: Optional[dict] = None,
     show_disabled: bool = False,
     skip_banner: bool = False,
+    game: Optional[Any] = None,
 ) -> bytes:
     """Render one screen of one board size. Returns PNG bytes at native resolution.
 
@@ -434,7 +511,8 @@ def render(
     team_colors = Color(_load_json(REPO / "colors" / "teams.json", REPO / "colors" / "teams.example.json"))
 
     spec = SCREENS[screen]
-    game = _build_game(spec.fixture)
+    # A caller can supply a real game; otherwise use this screen's canned one.
+    game = game if game is not None else _build_game(spec.fixture)
     scoreboard = Scoreboard(game)
 
     # Derive the state from the game first, then let the variant override it.
@@ -453,6 +531,15 @@ def render(
 
     options = RGBMatrixOptions()
     options.cols, options.rows = width, height
+
+    # The emulator's display adapter is a singleton: BaseAdapter.get_instance()
+    # caches on the class and ignores its arguments, so the first size rendered
+    # in a process would fix the frame geometry for every later one. Rendering
+    # w128h32 then w128h64 handed back a 128x32 image -- silently wrong for both
+    # the monitor's multi-size sweep and the editor's board dropdown. Drop the
+    # cached instance so this size gets its own.
+    options.display_adapter.INSTANCE = None
+
     matrix = RGBMatrix(options=options)
     canvas = matrix.CreateFrameCanvas()
 
