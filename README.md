@@ -44,7 +44,6 @@ If you'd like to see support for another set of board dimensions, or have design
 - [Usage](#usage)
   * [Running on Other Platforms](#running-on-other-platforms)
   * [Configuration](#configuration)
-    + [Web Config Editor](#web-config-editor)
   * [Controlling the Display (Screen Rotation)](#controlling-the-display-screen-rotation)
   * [Synchronizing with Broadcasts](#synchronizing-with-broadcasts)
   * [Additional Features](#additional-features)
