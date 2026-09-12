@@ -16,7 +16,11 @@ Phase 2 hooks for the boolean options in ``coordinates/<size>.json`` are wired
 through the same machinery (``/api/schema/coordinates/<size>``).
 
 Usage:
-    python config_editor.py [--port 80] [--host 0.0.0.0] [--service NAME]
+    venv/bin/python config_editor.py [--port 80] [--host 0.0.0.0] [--service NAME]
+
+Requires Python 3.10+. Use the project's venv rather than a bare ``python``,
+which on macOS and older Pi images is still Python 2 and will fail to parse this
+file at all.
 """
 
 import argparse
