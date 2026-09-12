@@ -5,8 +5,14 @@ informative thing available. It replaced a synthetic "Top 3 · 1-2 · 2 out" fil
 that restated numbers already drawn elsewhere on the board.
 """
 
+import io
 import unittest
+from unittest import mock
 
+from PIL import Image
+
+import data.game
+import layout_preview
 from data.game import Game, _article
 
 
@@ -125,6 +131,48 @@ class TestCurrentPlayDescription(unittest.TestCase):
 
     def test_empty_when_nothing_has_happened_yet(self):
         self.assertEqual(game_with().current_play_description(), "")
+
+
+SIZE = "w128h64"
+BACKGROUND = (7, 14, 25)
+
+# atbat.play_description on w128h64: x 55, y 61 (baseline), width 73, font 4x6.
+# A 4x6 cell above baseline 61 covers y 56..61, and x 0..52 there is team banner.
+SLOT_ROWS = range(56, 62)
+SLOT_COLUMNS = range(55, 128)
+
+SHORT = "Mound visit."  # 12 chars = 48px, comfortably inside 73
+LONG = "Yelich homers (30) on a fly ball to right center field."
+
+
+def render_with_description(description):
+    with mock.patch.object(data.game.Game, "current_play_description", lambda self: description):
+        layout_preview._layout_pool.clear()
+        png = layout_preview.render(SIZE, "live")
+    layout_preview._layout_pool.clear()
+    image = Image.open(io.BytesIO(png)).convert("RGB")
+    pixels = image.load()
+    return {x for y in SLOT_ROWS for x in SLOT_COLUMNS if pixels[x, y] != BACKGROUND}
+
+
+class TestPlayDescriptionScrolling(unittest.TestCase):
+    """Only text too wide for the slot animates.
+
+    The renderer parks a scrolling line off the right edge on its first frame, so
+    "is it in the slot at frame zero?" cleanly separates the two paths without
+    having to step an animation.
+    """
+
+    def test_text_that_fits_is_drawn_in_place(self):
+        drawn = render_with_description(SHORT)
+        self.assertTrue(drawn, f"{SHORT!r} fits the slot and should be visible immediately, not scrolled in")
+        self.assertGreaterEqual(min(drawn), 55, "the line should start at its configured x")
+
+    def test_text_too_wide_to_fit_still_scrolls(self):
+        self.assertEqual(render_with_description(LONG), set(), "a long description should start off the right edge")
+
+    def test_nothing_is_drawn_without_a_description(self):
+        self.assertEqual(render_with_description(""), set())
 
 
 if __name__ == "__main__":

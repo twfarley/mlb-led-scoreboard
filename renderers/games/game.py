@@ -190,7 +190,13 @@ def __render_batter_order(canvas, layout, colors, atbat: AtBat):
 
 
 def __render_play_description(canvas, layout, colors, description):
-    """Scroll the full play-by-play description once, then stop blocking rotation."""
+    """Draw the play-by-play line: static if it fits, else scroll it once.
+
+    Short descriptions are common -- "Mound visit.", "Strikeout.", "Wild pitch." --
+    and scrolling one that already fits is just harder to read for no gain. Only
+    text wider than the slot animates, and it returns a non-zero width while doing
+    so, which holds the rotation until it has been read once.
+    """
     global _play_desc_pos, _play_desc_last, _play_desc_finished
     coords = __optional(layout, "atbat.play_description")
     if coords is None:
@@ -206,6 +212,16 @@ def __render_play_description(canvas, layout, colors, description):
     bgcolor = colors.graphics_color("default.background")
     x, y, w = coords["x"], coords["y"], coords["width"]
     total_px = len(description) * font["size"]["width"]
+
+    if total_px <= w:
+        # Nothing to animate. Clear the scroll state too, so a long description
+        # that is replaced by a short one does not leave a stale position behind
+        # for the next long one to resume from.
+        _play_desc_pos = None
+        _play_desc_last = description
+        _play_desc_finished = True
+        graphics.DrawText(canvas, font["font"], x, y, color, description)
+        return 0
 
     if description != _play_desc_last:
         _play_desc_pos = x + w
