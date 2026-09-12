@@ -41,10 +41,39 @@ header .spacer { flex: 1; }
 header a { color: var(--accent); font-size: 13px; text-decoration: none; }
 header a:hover { text-decoration: underline; }
 
+.btn {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 12px; font-size: 13px; cursor: pointer;
+}
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dirty {
+  font-size: 12px; color: #f0c070;
+  border: 1px solid #7a5320; border-radius: 4px; padding: 2px 7px;
+}
+
+.hint { margin: 6px 2px 0; font-size: 12px; color: var(--muted); }
+
+.fields {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 0;
+}
+.fields label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.fields label span { flex: none; width: 46px; }
+.fields input[type="number"] {
+  width: 100%; min-width: 0;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+}
+.fields label.check { grid-column: 1 / -1; }
+.fields label.check span { width: auto; }
+
 .banner {
   margin: 0; padding: 10px 20px;
   background: #3a2320; border-bottom: 1px solid #6b3a30; color: #f0c8c0; font-size: 13px;
 }
+.banner.ok { background: #16301f; border-bottom-color: #2c6b43; color: #bfe9cd; }
 
 main {
   display: grid;
@@ -95,7 +124,7 @@ main {
 .el {
   position: absolute;
   border: 1px solid var(--exact);
-  cursor: pointer;
+  cursor: move;
   background: transparent;
 }
 .el.nominal { border-style: dashed; border-color: var(--nominal); }

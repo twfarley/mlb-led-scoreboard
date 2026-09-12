@@ -5,6 +5,7 @@ over in-memory buffers -- no socket, no port. That keeps the routes covered even
 where binding a listener is not possible.
 """
 
+import copy
 import io
 import json
 import unittest
@@ -15,8 +16,16 @@ import config_editor
 class Harness(config_editor.Handler):
     """Runs one request through the real handler and captures the response."""
 
-    def __init__(self, path):  # noqa: D107 - deliberately skips the socket setup
-        self.rfile = io.BytesIO(f"GET {path} HTTP/1.1\r\nHost: test\r\n\r\n".encode())
+    def __init__(self, path, post=None):  # noqa: D107 - deliberately skips the socket setup
+        if post is None:
+            raw = f"GET {path} HTTP/1.1\r\nHost: test\r\n\r\n".encode()
+        else:
+            payload = json.dumps(post).encode()
+            raw = (
+                f"POST {path} HTTP/1.1\r\nHost: test\r\n"
+                f"Content-Type: application/json\r\nContent-Length: {len(payload)}\r\n\r\n"
+            ).encode() + payload
+        self.rfile = io.BytesIO(raw)
         self.wfile = io.BytesIO()
         self.client_address = ("127.0.0.1", 0)
         self.requestline = ""
@@ -99,6 +108,37 @@ class TestLayoutRoutes(unittest.TestCase):
         res = Harness("/api/layout/preview?size=w128h64&screen=final")
         self.assertEqual(res.status, 200)
         self.assertTrue(res.body.startswith(b"\x89PNG\r\n"), "expected a PNG")
+
+
+class TestUnsavedEdits(unittest.TestCase):
+    """The editor previews edits before they are written, so the override path
+    has to change the render without touching disk."""
+
+    def setUp(self):
+        self.baseline = Harness("/api/layout/elements?size=w128h64&screen=final").json()
+        self.coords = copy.deepcopy(self.baseline["coords"])
+        self.on_disk = copy.deepcopy(self.baseline["coords"])
+
+    def tearDown(self):
+        # Nothing in this test class may write a custom coordinates file.
+        after = Harness("/api/layout/elements?size=w128h64&screen=final").json()["coords"]
+        self.assertEqual(after, self.on_disk, "a preview request modified the stored coordinates")
+
+    def test_posted_coords_move_the_box(self):
+        self.coords["final"]["inning"]["y"] = 30
+        body = Harness(
+            "/api/layout/elements", post={"size": "w128h64", "screen": "final", "coords": self.coords}
+        ).json()
+        moved = next(e for e in body["elements"] if e["keypath"] == "final.inning")
+        original = next(e for e in self.baseline["elements"] if e["keypath"] == "final.inning")
+        self.assertEqual(moved["box"][1], original["box"][1] - 15)
+
+    def test_posted_coords_change_the_render(self):
+        before = Harness("/api/layout/preview", post={"size": "w128h64", "screen": "final"}).body
+        self.coords["final"]["inning"]["y"] = 30
+        after = Harness("/api/layout/preview", post={"size": "w128h64", "screen": "final", "coords": self.coords}).body
+        self.assertTrue(after.startswith(b"\x89PNG\r\n"))
+        self.assertNotEqual(before, after, "moving an element should change the rendered board")
 
 
 if __name__ == "__main__":

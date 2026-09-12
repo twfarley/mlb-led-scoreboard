@@ -31,6 +31,9 @@
   <label class="toggle"><input type="checkbox" id="show-boxes" checked> Boxes</label>
   <label class="toggle"><input type="checkbox" id="show-grid"> Grid</label>
   <span class="spacer"></span>
+  <span id="dirty" class="dirty" hidden>unsaved</span>
+  <button type="button" id="revert" class="btn" disabled>Revert</button>
+  <button type="button" id="save" class="btn primary" disabled>Save</button>
   <a href="/">Config editor</a>
 </header>
 
@@ -49,6 +52,7 @@
       <span class="swatch anchor"></span> stored (x,&nbsp;y)
       <span id="readout"></span>
     </p>
+    <p class="hint">Drag a box to move it, or select one and nudge with the arrow keys (hold Shift for 10px).</p>
   </section>
 
   <aside id="panel">

@@ -1,14 +1,17 @@
 "use strict";
 
-// Read-only layout viewer.
+// Layout editor.
 //
 // The board image is rendered server-side by the real renderers and served at
 // native resolution (one image pixel per LED); this scales it by an integer
 // factor so a board pixel stays a crisp square. Bounding boxes are computed
 // server-side too, beside the anchor metadata and font metrics -- see
 // layout_preview.elements(). Nothing here re-derives where an element sits.
+//
+// Edits are held in a working copy and posted back for preview, so a drag shows
+// on the real board before anything is written to disk.
 
-const $ = (id) => document.getElementById(id);
+const $ = (id) => (typeof document === "undefined" ? null : document.getElementById(id));
 
 const state = {
   size: null,
@@ -17,11 +20,14 @@ const state = {
   elements: [],
   selected: null,
   board: { width: 0, height: 0 },
+  coords: null, // working copy of coordinates/<size>.json
+  saved: null, // last known on-disk state, for Revert
+  dirty: false,
 };
 
 // Zoom must stay an INTEGER number of screen pixels per LED. A fractional
 // scale resamples the preview and the grid stops lining up with the board,
-// which would make coordinates -- and later, snapping -- untrustworthy.
+// which would make coordinates -- and snapping -- untrustworthy.
 function zoomFactor() {
   if (state.zoom !== "fit") return Number(state.zoom);
 
@@ -30,20 +36,21 @@ function zoomFactor() {
 
   const wrap = $("stage-wrap");
   const availableWidth = (wrap ? wrap.clientWidth : window.innerWidth) - 8;
-  const availableHeight = window.innerHeight - $("stage").getBoundingClientRect().top - 80;
+  const availableHeight = window.innerHeight - $("stage").getBoundingClientRect().top - 110;
 
   return Math.max(1, Math.min(Math.floor(availableWidth / width), Math.floor(availableHeight / height)));
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function banner(message) {
+function banner(message, kind) {
   const el = $("banner");
   if (!message) {
     el.hidden = true;
     return;
   }
   el.textContent = message;
+  el.className = kind === "ok" ? "banner ok" : "banner";
   el.hidden = false;
 }
 
@@ -54,14 +61,131 @@ async function getJSON(url) {
   return body;
 }
 
+async function postJSON(url, payload) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `${res.status} ${res.statusText}`);
+  return body;
+}
+
 function el(tag, attrs = {}, ...kids) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node[k] = v;
     else if (v !== null && v !== undefined) node.setAttribute(k, v);
   }
   for (const kid of kids) node.append(kid);
   return node;
+}
+
+function nodeAt(doc, keypath) {
+  let node = doc;
+  for (const part of keypath.split(".")) {
+    if (!node || typeof node !== "object") return null;
+    node = node[part];
+  }
+  return node && typeof node === "object" ? node : null;
+}
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// ── editing ──────────────────────────────────────────────────────────────────
+
+// Applying a move is not simply "x += dx" for every element. Some carry their
+// vertical position in keys other than `y`, and some have no `x` of their own.
+function applyDelta(element, dx, dy) {
+  const node = nodeAt(state.coords, element.keypath);
+  if (!node) return false;
+  const { width, height } = state.board;
+  let changed = false;
+
+  const moveX = (amount) => {
+    if (node.x === undefined) return;
+    const next = clamp(node.x + amount, 0, width - 1);
+    if (next !== node.x) {
+      node.x = next;
+      changed = true;
+    }
+  };
+
+  // atbat.batter_stats is pinned to the right edge of the board by the
+  // renderer and has no x at all; only its row can move.
+  if (element.anchor !== "board-right") moveX(dx);
+
+  if (element.extent === "vline") {
+    // A divider carries its span, not a single y.
+    const span = node.y_end - node.y_start;
+    const nextStart = clamp(node.y_start + dy, 0, height - 1 - span);
+    if (nextStart !== node.y_start) {
+      node.y_start = nextStart;
+      node.y_end = nextStart + span;
+      changed = true;
+    }
+  } else if (element.extent === "squares") {
+    // The whole column of challenge squares moves together.
+    const ys = node.squares;
+    const lo = Math.min(...ys);
+    const hi = Math.max(...ys) + node.size - 1;
+    const shift = clamp(dy, -lo, height - 1 - hi);
+    if (shift !== 0) {
+      node.squares = ys.map((v) => v + shift);
+      changed = true;
+    }
+  } else if (node.y !== undefined) {
+    const next = clamp(node.y + dy, 0, height - 1);
+    if (next !== node.y) {
+      node.y = next;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function markDirty() {
+  state.dirty = JSON.stringify(state.coords) !== JSON.stringify(state.saved);
+  $("dirty").hidden = !state.dirty;
+  $("save").disabled = !state.dirty;
+  $("revert").disabled = !state.dirty;
+}
+
+/** Re-render the board and recompute boxes from the working copy. */
+let refreshToken = 0;
+async function refresh() {
+  const token = ++refreshToken;
+  try {
+    const data = await postJSON("/api/layout/elements", {
+      size: state.size,
+      screen: state.screen,
+      coords: state.coords,
+    });
+    if (token !== refreshToken) return; // a newer edit already superseded this
+    state.elements = data.elements;
+  } catch (err) {
+    banner(`Could not recompute boxes: ${err.message}`);
+  }
+
+  const res = await fetch("/api/layout/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ size: state.size, screen: state.screen, coords: state.coords }),
+  });
+  if (token !== refreshToken) return;
+  if (res.ok) {
+    const blob = await res.blob();
+    const previous = $("preview").dataset.objectUrl;
+    if (previous) URL.revokeObjectURL(previous);
+    const url = URL.createObjectURL(blob);
+    $("preview").dataset.objectUrl = url;
+    $("preview").src = url;
+  }
+  paint();
+  paintList();
+  paintDetails();
 }
 
 // ── loading ──────────────────────────────────────────────────────────────────
@@ -85,8 +209,8 @@ async function boot() {
   }
   screenSel.value = "live" in meta.screens ? "live" : Object.keys(meta.screens)[0];
 
-  sizeSel.onchange = () => load();
-  screenSel.onchange = () => load();
+  sizeSel.onchange = () => guardUnsaved(load);
+  screenSel.onchange = () => load({ keepEdits: true });
   $("zoom").onchange = () => {
     state.zoom = $("zoom").value;
     localStorage.setItem("layoutZoom", state.zoom);
@@ -94,6 +218,8 @@ async function boot() {
   };
   $("show-boxes").onchange = paint;
   $("show-grid").onchange = paint;
+  $("save").onclick = save;
+  $("revert").onclick = revert;
 
   const savedZoom = localStorage.getItem("layoutZoom");
   if (savedZoom && [...$("zoom").options].some((o) => o.value === savedZoom)) {
@@ -101,34 +227,124 @@ async function boot() {
   }
   state.zoom = $("zoom").value;
 
-  // "Fit" is measured from the viewport, so it has to be recomputed on resize.
   window.addEventListener("resize", () => {
     if (state.zoom === "fit") paint();
   });
+  window.addEventListener("beforeunload", (ev) => {
+    if (state.dirty) ev.preventDefault();
+  });
+  document.addEventListener("keydown", onKeyDown);
 
   await load();
 }
 
-async function load() {
+function guardUnsaved(fn) {
+  if (state.dirty && !confirm("You have unsaved layout changes. Discard them?")) {
+    $("size").value = state.size;
+    return;
+  }
+  state.dirty = false;
+  fn();
+}
+
+async function load(opts = {}) {
   state.size = $("size").value;
   state.screen = $("screen").value;
   state.selected = null;
   banner("");
 
-  // Cache-bust so a coordinate change is never masked by a stale frame.
-  $("preview").src = `/api/layout/preview?size=${state.size}&screen=${state.screen}&t=${Date.now()}`;
-
   try {
     const data = await getJSON(`/api/layout/elements?size=${state.size}&screen=${state.screen}`);
-    state.elements = data.elements;
     state.board = { width: data.width, height: data.height };
+    state.saved = data.coords;
+    // Switching screens must not throw away edits to the same board.
+    if (!(opts.keepEdits && state.coords)) state.coords = JSON.parse(JSON.stringify(data.coords));
+    state.elements = data.elements;
   } catch (err) {
     state.elements = [];
     banner(`Could not load elements: ${err.message}`);
+    paint();
+    return;
   }
-  paint();
-  paintList();
-  paintDetails();
+  markDirty();
+  await refresh();
+}
+
+async function save() {
+  $("save").disabled = true;
+  try {
+    const result = await postJSON(`/api/save/coordinates/${state.size}`, state.coords);
+    state.saved = JSON.parse(JSON.stringify(state.coords));
+    markDirty();
+    banner(`Saved ${result.written}${result.backup ? ` (backup: ${result.backup})` : ""}.`, "ok");
+  } catch (err) {
+    banner(`Save failed: ${err.message}`);
+    $("save").disabled = false;
+  }
+}
+
+async function revert() {
+  state.coords = JSON.parse(JSON.stringify(state.saved));
+  markDirty();
+  banner("");
+  await refresh();
+}
+
+// ── interaction ──────────────────────────────────────────────────────────────
+
+function onKeyDown(ev) {
+  if (!state.selected) return;
+  if (ev.target.tagName === "INPUT" || ev.target.tagName === "SELECT") return;
+  const step = ev.shiftKey ? 10 : 1;
+  const deltas = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  const delta = deltas[ev.key];
+  if (!delta) return;
+  ev.preventDefault();
+  const element = state.elements.find((e) => e.keypath === state.selected);
+  if (element && applyDelta(element, delta[0], delta[1])) {
+    markDirty();
+    refresh();
+  }
+}
+
+/** Drag moves the box live; the board re-renders once, on drop. */
+function startDrag(ev, element) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  select(element.keypath);
+
+  const z = zoomFactor();
+  const startX = ev.clientX;
+  const startY = ev.clientY;
+  const box = ev.currentTarget;
+  const originLeft = parseFloat(box.style.left);
+  const originTop = parseFloat(box.style.top);
+  let dx = 0;
+  let dy = 0;
+
+  const onMove = (move) => {
+    // Snap to whole board pixels: the coordinates are integers, so a drag that
+    // reports fractions would be lying about where the element will land.
+    dx = Math.round((move.clientX - startX) / z);
+    dy = Math.round((move.clientY - startY) / z);
+    box.style.left = `${originLeft + dx * z}px`;
+    box.style.top = `${originTop + dy * z}px`;
+    $("readout").textContent = `${dx >= 0 ? "+" : ""}${dx}, ${dy >= 0 ? "+" : ""}${dy}`;
+  };
+
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    if ((dx || dy) && applyDelta(element, dx, dy)) {
+      markDirty();
+      refresh();
+    } else {
+      paint();
+    }
+  };
+
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
 }
 
 // ── painting ─────────────────────────────────────────────────────────────────
@@ -166,10 +382,7 @@ function paint() {
     box.style.top = `${y0 * z}px`;
     box.style.width = `${(x1 - x0 + 1) * z}px`;
     box.style.height = `${(y1 - y0 + 1) * z}px`;
-    box.onclick = (ev) => {
-      ev.stopPropagation();
-      select(element.keypath);
-    };
+    box.onmousedown = (mev) => startDrag(mev, element);
     boxes.append(box);
 
     const { x, y } = element.coords;
@@ -208,9 +421,12 @@ const ANCHOR_HELP = {
   left: "x is the left edge.",
   center: "x is the horizontal CENTRE — the renderer runs it through center_text_position, so the element spreads either side of it.",
   right: "x is the RIGHTMOST pixel — content is drawn right-to-left from it.",
-  "board-right": "Pinned to the right edge of the board. x is not configurable for this element.",
+  "board-right": "Pinned to the right edge of the board. This element has no x, so it can only move vertically.",
   none: "No x/y position; this is a column offset inside a list layout.",
 };
+
+// Numeric keys worth exposing as editable fields, in a sensible order.
+const EDITABLE = ["x", "y", "width", "height", "size", "y_start", "y_end", "spacing", "offset"];
 
 function paintDetails() {
   const box = $("details");
@@ -222,7 +438,6 @@ function paintDetails() {
   }
   box.className = "";
   box.innerHTML = "";
-
   box.append(el("h3", {}, element.keypath));
 
   const tags = el("div");
@@ -235,11 +450,33 @@ function paintDetails() {
   box.append(el("p", { class: "note" }, ANCHOR_HELP[element.anchor] || ""));
   if (element.note) box.append(el("p", { class: "note" }, element.note));
 
-  const dl = el("dl");
-  for (const [key, value] of Object.entries(element.coords)) {
-    dl.append(el("dt", {}, key));
-    dl.append(el("dd", {}, typeof value === "object" ? JSON.stringify(value) : String(value)));
+  const node = nodeAt(state.coords, element.keypath) || {};
+  const fields = el("div", { class: "fields" });
+  for (const key of EDITABLE) {
+    if (typeof node[key] !== "number") continue;
+    const input = el("input", { type: "number", step: "1", value: String(node[key]) });
+    input.onchange = () => {
+      const next = parseInt(input.value, 10);
+      if (Number.isNaN(next) || next === node[key]) return;
+      node[key] = next;
+      markDirty();
+      refresh();
+    };
+    fields.append(el("label", {}, el("span", {}, key), input));
   }
+  if (typeof node.enabled === "boolean") {
+    const toggle = el("input", { type: "checkbox" });
+    toggle.checked = node.enabled;
+    toggle.onchange = () => {
+      node.enabled = toggle.checked;
+      markDirty();
+      refresh();
+    };
+    fields.append(el("label", { class: "check" }, el("span", {}, "enabled"), toggle));
+  }
+  if (fields.children.length) box.append(fields);
+
+  const dl = el("dl");
   if (element.font) {
     dl.append(el("dt", {}, "font"));
     dl.append(el("dd", {}, `${element.font.width}×${element.font.height}`));
@@ -258,7 +495,6 @@ function paintDetails() {
       )
     );
   }
-  box.append(el("p", { class: "readonly-note" }, "Read-only for now — dragging and saving come next."));
 }
 
 function select(keypath) {
@@ -268,6 +504,15 @@ function select(keypath) {
   paintDetails();
 }
 
-$("stage").addEventListener("click", () => select(null));
+$("stage")?.addEventListener("mousedown", (ev) => {
+  if (ev.target.id === "stage" || ev.target.id === "preview" || ev.target.id === "boxes") select(null);
+});
 
-boot();
+// Loaded in a browser: start. Loaded by a test runner (no DOM): just export the
+// pure bits so the per-extent move rules can be checked without a browser.
+if (typeof document !== "undefined" && document.getElementById("stage")) {
+  boot();
+}
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { state, applyDelta, nodeAt, clamp };
+}

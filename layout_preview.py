@@ -151,8 +151,14 @@ def _box_for(keypath, coords, meta, layout, board_width, chars):
     try:
         font = layout.font(keypath)
         fw, fh = font["size"]["width"], font["size"]["height"]
+        # `y` is the BASELINE. The BDF cell sits from y - baseline down to
+        # y + (height - baseline) - 1, so using the height alone puts the box a
+        # pixel out at both ends. Measured against a real render: with the 7x13
+        # font (baseline 11) the caps of "FINAL 14" land on y-9 .. y-1 inside a
+        # cell of y-11 .. y+1.
+        baseline = getattr(font["font"], "baseline", fh - 1)
     except Exception:
-        fw, fh = 4, 6
+        fw, fh, baseline = 4, 6, 5
 
     if extent in ("arrow_up", "arrow_down"):
         size = layout.coords("inning.arrow")["size"]
@@ -160,11 +166,13 @@ def _box_for(keypath, coords, meta, layout, board_width, chars):
             return (x - size + 1, y, x + size - 1, y + size - 1)
         return (x - size + 1, y - size + 1, x + size - 1, y)
 
+    top = y - baseline
+    bottom = top + fh - 1
+
     if extent == "scroll":
         # A scroll window is a fixed clip region, so this one is exact.
-        return (x, y - fh + 1, x + coords.get("width", board_width) - 1, y)
+        return (x, top, x + coords.get("width", board_width) - 1, bottom)
 
-    # extent == "text": y is a BASELINE, so the box rises fh-1 above it.
     w = max(1, chars) * fw
     if anchor == "center":
         x0 = x - w // 2
@@ -174,10 +182,10 @@ def _box_for(keypath, coords, meta, layout, board_width, chars):
         x0 = board_width - w
     else:
         x0 = x
-    return (x0, y - fh + 1, x0 + w - 1, y)
+    return (x0, top, x0 + w - 1, bottom)
 
 
-def elements(size: str, screen: str) -> list[dict]:
+def elements(size: str, screen: str, coords: Optional[dict] = None) -> list[dict]:
     """Every element drawn on `screen`, with a bounding box for each.
 
     Only elements the screen actually draws are returned: the coordinates file
@@ -199,7 +207,7 @@ def elements(size: str, screen: str) -> list[dict]:
     if prefixes is None:
         raise ValueError(f"unknown screen {screen!r}, expected one of {sorted(meta_doc['screens'])}")
 
-    values = _coords_for(size)
+    values = coords if coords is not None else _coords_for(size)
     layout = Layout(values, width, height)
 
     out = []
@@ -240,8 +248,13 @@ def elements(size: str, screen: str) -> list[dict]:
     return out
 
 
-def render(size: str, screen: str) -> bytes:
-    """Render one screen of one board size. Returns PNG bytes at native resolution."""
+def render(size: str, screen: str, coords: Optional[dict] = None) -> bytes:
+    """Render one screen of one board size. Returns PNG bytes at native resolution.
+
+    `coords` overrides the on-disk coordinates without writing them, so the
+    editor can show unsaved edits on the real board rather than only moving a
+    box around over a stale image.
+    """
     m = _SIZE_RE.match(size)
     if not m:
         raise ValueError(f"bad size {size!r}, expected e.g. 'w128h64'")
@@ -267,7 +280,7 @@ def render(size: str, screen: str) -> bytes:
     from renderers.games import irregular, postgame as postgamerender, pregame as pregamerender, teams
     from renderers.games import game as gamerender
 
-    layout = Layout(_coords_for(size), width, height)
+    layout = Layout(coords if coords is not None else _coords_for(size), width, height)
     colors = Color(_load_json(REPO / "colors" / "scoreboard.json", REPO / "colors" / "scoreboard.example.json"))
     team_colors = Color(_load_json(REPO / "colors" / "teams.json", REPO / "colors" / "teams.example.json"))
 

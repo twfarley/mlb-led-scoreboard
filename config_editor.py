@@ -480,12 +480,18 @@ class Handler(BaseHTTPRequestHandler):
             screen = (query.get("screen") or ["live"])[0]
             try:
                 m = re.match(r"^w(\d+)h(\d+)$", size)
+                custom, example = coordinate_paths(size)
+                values, source = load_merged(custom, example)
                 return self._send_json(
                     {
                         "size": size,
                         "screen": screen,
                         "width": int(m.group(1)) if m else None,
                         "height": int(m.group(2)) if m else None,
+                        # The full document, so the editor can hold a working
+                        # copy and post it back for preview and for saving.
+                        "coords": values,
+                        "source": source,
                         "elements": layout_preview.elements(size, screen),
                     }
                 )
@@ -503,6 +509,30 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         try:
+            if path == "/api/layout/preview":
+                # Renders the coordinates the editor currently holds, saved or
+                # not, so a drag shows on the real board instead of only moving
+                # a box over a stale image. Nothing is written.
+                import layout_preview
+
+                body = self._read_body()
+                png = layout_preview.render(body.get("size", "w128h64"), body.get("screen", "live"), body.get("coords"))
+                return self._send_bytes(png, "image/png")
+            if path == "/api/layout/elements":
+                import layout_preview
+
+                body = self._read_body()
+                size = body.get("size", "w128h64")
+                m = re.match(r"^w(\d+)h(\d+)$", size)
+                return self._send_json(
+                    {
+                        "size": size,
+                        "screen": body.get("screen", "live"),
+                        "width": int(m.group(1)) if m else None,
+                        "height": int(m.group(2)) if m else None,
+                        "elements": layout_preview.elements(size, body.get("screen", "live"), body.get("coords")),
+                    }
+                )
             if path == "/api/save/config":
                 return self._send_json(save_config(self._read_body()))
             if path == "/api/save/line_score":
