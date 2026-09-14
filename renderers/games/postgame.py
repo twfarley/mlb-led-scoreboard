@@ -20,7 +20,40 @@ def render_postgame(
     is_playoffs,
 ):
     _render_final_inning(canvas, layout, colors, scoreboard)
+    _render_records(canvas, layout, colors, scoreboard)
     return _render_decision_scroll(canvas, layout, colors, postgame, text_pos, editorial_blurb, is_playoffs)
+
+
+def _render_records(canvas, layout, colors, scoreboard):
+    """Season records beside the final score, when the layout asks for them.
+
+    Separate from `teams.record`, which the banner draws on every screen: on a
+    board where the live screen already fills the space to the right of the team
+    block, records can only go there once the game is over. Drawn from here rather
+    than from the banner so nothing else has to become screen-aware.
+
+    The record MLB reports in `gameData` for a completed game already includes that
+    game -- verified against the standings on a game that had just gone final -- so
+    there is nothing to wait for and no correction to apply.
+    """
+    try:
+        coords = layout.coords("final.record")
+    except KeyError:
+        return
+    if not coords.get("enabled", False):
+        return
+
+    font = layout.font("final.record")
+    color = colors.graphics_color("final.record")
+
+    for homeaway, team in (("away", scoreboard.away_team), ("home", scoreboard.home_team)):
+        # Same guard as the banner's: a spring-training or exhibition side can
+        # arrive with an empty record rather than 0-0.
+        if "wins" not in team.record or "losses" not in team.record:
+            continue
+        side = layout.coords(f"final.record.{homeaway}")
+        text = "({}-{})".format(team.record["wins"], team.record["losses"])
+        graphics.DrawText(canvas, font["font"], side["x"], side["y"], color, text)
 
 
 def _render_decision_scroll(canvas, layout, colors, postgame, text_pos, editorial_blurb, is_playoffs):
