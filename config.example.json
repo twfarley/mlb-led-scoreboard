@@ -75,6 +75,7 @@
   ],
   "scrolling_speed": 2,
   "editorial_blurb": true,
+  "layout_variant": "",
   "debug": false,
   "demo_date": false
 }

@@ -437,6 +437,12 @@
       "default": true,
       "x-format": "checkbox"
     },
+    "layout_variant": {
+      "description": "Suffix of an alternative layout for your board size. \"VERBOSE\" loads coordinates/w128h64VERBOSE.example.json on a 128x64 board. Leave empty for the standard layout.",
+      "type": "string",
+      "default": "",
+      "enum": ["", "VERBOSE"]
+    },
     "debug": {
       "description": "Should the board enable extra logging?",
       "type": "boolean",

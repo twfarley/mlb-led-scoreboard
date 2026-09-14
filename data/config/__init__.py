@@ -76,6 +76,7 @@ class Config:
 
         self.debug = json["debug"]
         self.demo_date = json["demo_date"]
+        self.layout_variant = json.get("layout_variant", "")
 
         self.playoffs_start_date = _get_playoff_start_date(self.parse_today().year)
 
@@ -281,7 +282,12 @@ You should not edit or move this file!"
         return reference_colors
 
     def __get_layout(self, width, height):
-        filename_prefix = "w{}h{}".format(width, height)
+        # A variant selects an alternative arrangement for the same board size --
+        # "VERBOSE" loads w128h64VERBOSE.example.json on a 128x64 board -- so that
+        # shipping one does not mean editing an example file, and a custom
+        # w128h64VERBOSE.json is reconciled against the variant it came from rather
+        # than against the stock layout, which would strip everything specific to it.
+        filename_prefix = "w{}h{}{}".format(width, height, self.layout_variant)
         filename = COORDINATES_DIRECTORY / "{}.json".format(filename_prefix)
         reference_filename = "{}.example.json".format(filename_prefix)
         reference_path = COORDINATES_DIRECTORY / reference_filename
@@ -296,13 +302,15 @@ You should not edit or move this file!
 
 Supported dimensions are: {', '.join(supported_dimensions)}
 If you aren't sure why you're seeing this, there might not be official support for your matrix dimensions yet.
+A name with a suffix, such as w128h64VERBOSE, is an alternative layout for that size. Select one with the
+`layout_variant` config option; do not rename it.
 """)
             sys.exit(1)
 
         # Load and merge any layout customizations
         custom_layout = self.read_json(filename)
         if custom_layout:
-            LOGGER.info("Custom '%dx%d.json' found. Merging with default reference layout.", width, height)
+            LOGGER.info("Custom '%s.json' found. Merging with default reference layout.", filename_prefix)
             new_layout = deep_update(reference_layout, custom_layout)
             return new_layout
         return reference_layout
