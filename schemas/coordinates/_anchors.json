@@ -76,7 +76,15 @@
       "teams.",
       "network."
     ],
-    "live_break": ["inning.break.", "inning.number", "inning.arrow", "teams.", "network."],
+    "live_break": [
+      "inning.break.",
+      "inning.number",
+      "inning.arrow",
+      "bases.",
+      "outs.",
+      "teams.",
+      "network."
+    ],
     "live_nohitter": [
       "atbat.",
       "bases.",
@@ -137,6 +145,8 @@
 
     "final.inning":                    { "anchor": "center", "extent": "text", "note": "center_text_position: x is the centre of 'FINAL' / 'FINAL 11'" },
     "final.nohit_text":                { "anchor": "left",   "extent": "text" },
+    "final.record.away":               { "anchor": "left",   "extent": "text" },
+    "final.record.home":               { "anchor": "left",   "extent": "text" },
     "final.scrolling_text":            { "anchor": "left",   "extent": "scroll" },
 
     "inning.number":                   { "anchor": "right", "extent": "text", "note": "__render_inning_number draws at x - len(number)*font_width, so x is the RIGHTMOST pixel" },

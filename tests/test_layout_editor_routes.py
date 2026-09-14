@@ -125,17 +125,21 @@ class TestUnsavedEdits(unittest.TestCase):
         self.assertEqual(after, self.on_disk, "a preview request modified the stored coordinates")
 
     def test_posted_coords_move_the_box(self):
-        self.coords["final"]["inning"]["y"] = 30
+        # Derived from what is on disk rather than hardcoded: this asserts that a
+        # posted y shifts the box by the same amount, which stays true when the
+        # layout is retuned. A fixed "15px up" broke when final.inning moved.
+        was = self.coords["final"]["inning"]["y"]
+        self.coords["final"]["inning"]["y"] = was + 12
         body = Harness(
             "/api/layout/elements", post={"size": "w128h64", "screen": "final", "coords": self.coords}
         ).json()
         moved = next(e for e in body["elements"] if e["keypath"] == "final.inning")
         original = next(e for e in self.baseline["elements"] if e["keypath"] == "final.inning")
-        self.assertEqual(moved["box"][1], original["box"][1] - 15)
+        self.assertEqual(moved["box"][1], original["box"][1] + 12)
 
     def test_posted_coords_change_the_render(self):
         before = Harness("/api/layout/preview", post={"size": "w128h64", "screen": "final"}).body
-        self.coords["final"]["inning"]["y"] = 30
+        self.coords["final"]["inning"]["y"] += 12
         after = Harness("/api/layout/preview", post={"size": "w128h64", "screen": "final", "coords": self.coords}).body
         self.assertTrue(after.startswith(b"\x89PNG\r\n"))
         self.assertNotEqual(before, after, "moving an element should change the rendered board")

@@ -154,7 +154,17 @@
       "properties": {
         "inning":         { "$ref": "#/$defs/point" },
         "scrolling_text": { "$ref": "#/$defs/point_width" },
-        "nohit_text":     { "$ref": "#/$defs/point" }
+        "nohit_text":     { "$ref": "#/$defs/point" },
+        "record": {
+          "type": "object",
+          "description": "Season records beside the final score. Independent of teams.record, which the team banner draws on every screen -- on a layout whose live screen fills the space right of the team block, records only fit once the game is over.",
+          "properties": {
+            "font_name": { "$ref": "#/$defs/font_name" },
+            "enabled":   { "type": "boolean" },
+            "away":      { "$ref": "#/$defs/point" },
+            "home":      { "$ref": "#/$defs/point" }
+          }
+        }
       }
     },
     "inning": {
@@ -165,6 +175,10 @@
           "properties": {
             "number": { "$ref": "#/$defs/point" },
             "text":   { "$ref": "#/$defs/point" },
+            "show_bases_and_outs": {
+              "type": "boolean",
+              "description": "Keep the diamond and out markers on screen through the break, drawn in the inning.break.inactive colour. Only safe on a layout whose due-up display leaves that space free."
+            },
             "due_up": {
               "type": "object",
               "properties": {

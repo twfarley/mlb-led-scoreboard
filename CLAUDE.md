@@ -111,6 +111,22 @@ they just cost merge friction and are a harder sell upstream.
 5. **Runtime config is gitignored**: `/config*.json`, `coordinates/*.json`. Anything you
    want tracked has to go through the schema → example path.
 
+6. **`schemas/coordinates/_anchors.json` has a `screens` map that must list every
+   element a screen draws.** The layout monitor's `--deep` overlap check renders each
+   element with all *others* displaced off-panel; anything a screen draws that is not
+   in that screen's prefix list never gets displaced, so it appears in every element's
+   claim set and every pair "overlaps". Making the break screen draw the bases turned
+   into **771 findings** across six board sizes until `bases.`/`outs.` were added to
+   `live_break`. A sudden explosion of `overlap` findings that all share one bounding
+   box means a missing prefix, not a layout fault.
+
+7. **`AVAILABLE_OPTIONAL_KEYS` gating means `layout.coords()` only substitutes a state
+   sub-dict at the exact node you ask for.** `coords("teams.record")` picks up a
+   `nohit` child; `coords("teams.record.away")` does not, because the walk reaches
+   `away` and only then looks for the state key. So a per-state variant has to be
+   repeated at every keypath the renderer actually reads. This is why the FINAL records
+   are a separate `final.record` block rather than a state variant of `teams.record`.
+
 ## Rotation model (non-obvious)
 
 - **Higher priority number = more important.** `0` is reserved for "no games".
@@ -177,10 +193,17 @@ and the pitch-speed overlay were **not** ported.
    typecheck CI failure: `mypy .` went from 9 errors — all inside `score_bug/` — to
    clean. The old history is tagged `backup/score-bug-postrebase` if the plugin
    scaffolding is ever wanted again.
-2. **Pregame / final / status screens were laid out assuming teams on top.** Now that
-   teams sit at y=28–63 on 128x64, the `final.*`, `pregame.*` and `status.*`
-   coordinates likely want retuning. The final screen renders acceptably but was not
-   designed for this arrangement.
+2. **Pregame / status screens were laid out assuming teams on top.** Now that teams
+   sit at y=28–63 on 128x64, the `pregame.*` and `status.*` coordinates likely want
+   retuning. ~~The final screen renders acceptably but was not designed for this
+   arrangement.~~ **Final is done** — `FINAL` (+ extra innings) and the W/L/SV/blurb
+   scroll now sit in the free band above the banner, `final.nohit_text` moved up
+   beside `FINAL`, and season records draw to the right of the score from a new
+   `final.record` block. Records come from the postgame renderer, **not** from the
+   banner's `teams.record`: the banner draws on every screen, and the live screen
+   already fills that space. `gameData.teams.<side>.record` for a completed game
+   already includes that game (checked against the standings on a just-final game),
+   so there is nothing to wait for.
 3. ~~Branch is based on a stale local `master`.~~ **Done** — rebased onto upstream
    `master` at v9.2.2 (`fbc1a4d`). Two commits were dropped as superseded upstream:
    `7aa3579` ("Delayed: Tiebreaker" status, merged upstream) and `fea9d6b` (drop

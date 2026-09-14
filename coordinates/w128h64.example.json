@@ -23,17 +23,30 @@
   },
   "final": {
     "inning": {
-      "x": 90,
-      "y": 45
+      "x": 64,
+      "y": 13
     },
     "scrolling_text": {
+      "font_name": "5x7",
       "x": 0,
-      "y": 20,
+      "y": 25,
       "width": 128
     },
     "nohit_text": {
-      "x": 55,
-      "y": 61
+      "x": 98,
+      "y": 12
+    },
+    "record": {
+      "font_name": "4x6",
+      "enabled": true,
+      "away": {
+        "x": 56,
+        "y": 39
+      },
+      "home": {
+        "x": 56,
+        "y": 57
+      }
     }
   },
   "inning": {
@@ -46,6 +59,7 @@
         "x": 3,
         "y": 44
       },
+      "show_bases_and_outs": true,
       "due_up": {
         "due": {
           "font_name": "5x7",

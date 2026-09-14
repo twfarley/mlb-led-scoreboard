@@ -69,9 +69,9 @@ class TestDueUpLine(unittest.TestCase):
         self.assertEqual(due_up_line(atbat(batter=None, on_deck=None, in_hole=None)), "")
 
 
-def render_break(text_pos):
+def render_break(text_pos, size=SIZE):
     layout_preview._layout_pool.clear()
-    png = layout_preview.render(SIZE, "live_break", text_pos=text_pos)
+    png = layout_preview.render(size, "live_break", text_pos=text_pos)
     layout_preview._layout_pool.clear()
     return Image.open(io.BytesIO(png)).convert("RGB")
 
@@ -105,6 +105,48 @@ class TestBreakScreen(unittest.TestCase):
         pixels = image.load()
         colors = {pixels[x, y] for y in range(28, 64) for x in range(60, 128)}
         self.assertIn(INACTIVE, colors, "bases/outs should still be on screen during a break")
+
+    def test_keeping_bases_and_outs_is_opt_in_per_layout(self):
+        """The dim colour is shared, so it cannot be the gate.
+
+        Every other board size stacks the due-up names across the space the
+        diamond occupies -- drawing both there put text on top of the diamond on
+        four of the six sizes until this flag existed.
+        """
+        for size in ("w128h32", "w64h32", "w64h64", "w32h32", "w192h64"):
+            coords = layout_preview._coords_for(size)["inning"]["break"]
+            self.assertNotIn("show_bases_and_outs", coords, f"{size} stacks its due-up names over the diamond")
+        self.assertTrue(layout_preview._coords_for(SIZE)["inning"]["break"]["show_bases_and_outs"])
+
+    def test_a_layout_without_the_flag_draws_no_diamond_during_the_break(self):
+        """Enabling the flag has to be what changes the render.
+
+        A colour comparison alone will not do it: `inning.break.inactive` shares
+        its value with `inning.arrow.inactive`, so the dim arrow is on screen
+        either way. Compare the two renders instead.
+        """
+        import copy
+
+        stock = layout_preview._coords_for("w128h32")
+        flagged = copy.deepcopy(stock)
+        flagged["inning"]["break"]["show_bases_and_outs"] = True
+
+        layout_preview._layout_pool.clear()
+        default = layout_preview.render("w128h32", "live_break", text_pos=0)
+        layout_preview._layout_pool.clear()
+        opted_in = layout_preview.render("w128h32", "live_break", coords=flagged, text_pos=0)
+        layout_preview._layout_pool.clear()
+
+        self.assertNotEqual(default, opted_in, "the flag should be what puts the diamond on the break screen")
+
+        # w128h32's 2B diamond spans x 80..91, y 1..12 -- team-banner-free and
+        # nowhere near the dim arrow.
+        pixels = Image.open(io.BytesIO(default)).convert("RGB").load()
+        self.assertNotIn(
+            INACTIVE,
+            {pixels[x, y] for y in range(1, 13) for x in range(80, 92)},
+            "w128h32 should render its break screen exactly as it did before",
+        )
 
     def test_the_inning_indicator_stays_bright(self):
         """The number and the blinking arrow are the one thing on the break screen

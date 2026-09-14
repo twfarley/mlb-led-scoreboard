@@ -52,18 +52,21 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
         pos = max(pos, __render_play_description(canvas, layout, colors, scoreboard.play_description))
 
     else:
-        # The inning indicator (number + blinking-half arrow) lives in the corner
-        # display below. Keep the diamond and the out markers on screen through
-        # the break so the board does not visibly lose half its furniture, but draw
+        # Optionally keep the diamond and the out markers on screen through the
+        # break so the board does not visibly lose half its furniture, but draw
         # them dimmed: between halves of an inning there are no runners and no
         # outs to report, so showing them lit would be wrong.
-        try:
-            idle = colors.graphics_color("inning.break.inactive")
-        except KeyError:
-            idle = None
-        if idle is not None:
-            _render_bases(canvas, layout, colors, scoreboard.bases, False, 0, override_color=idle)
-            _render_outs(canvas, layout, colors, scoreboard.outs, override_color=idle)
+        #
+        # Off by default. Every other board size stacks the due-up names across
+        # the space the diamond occupies, so drawing both puts text on top of it.
+        if __break_shows_bases_and_outs(layout):
+            try:
+                idle = colors.graphics_color("inning.break.inactive")
+            except KeyError:
+                idle = None
+            if idle is not None:
+                _render_bases(canvas, layout, colors, scoreboard.bases, False, 0, override_color=idle)
+                _render_outs(canvas, layout, colors, scoreboard.outs, override_color=idle)
         pos = _render_due_up(canvas, layout, colors, scoreboard.atbat, text_pos)
 
     # Inning indicator (two stacked arrows + number) renders in both branches so
@@ -123,6 +126,19 @@ def __optional(layout, key):
     except KeyError:
         return None
     return coords if coords.get("enabled", False) else None
+
+
+def __break_shows_bases_and_outs(layout):
+    """Whether the break screen keeps the diamond and out markers on screen.
+
+    Off unless a layout asks for it. It is not enough for the dim colour to exist:
+    every board size other than 128x64 stacks the due-up names across the space
+    the diamond occupies, so drawing both puts text on top of it.
+    """
+    try:
+        return layout.coords("inning.break").get("show_bases_and_outs", False)
+    except KeyError:
+        return False
 
 
 def __batter_stat_positions(layout, atbat: AtBat):

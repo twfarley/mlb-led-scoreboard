@@ -35,6 +35,7 @@
       "properties": {
         "inning":         { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
         "scrolling_text": { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
+        "record":         { "$ref": "#/$defs/color", "default": {"r": 160, "g": 148, "b": 40} },
         "nohit_text":     { "$ref": "#/$defs/color", "default": {"r": 255, "g": 50,  "b": 50}  }
       },
       "additionalProperties": false
