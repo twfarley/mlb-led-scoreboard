@@ -328,3 +328,45 @@ systemd unit **`mlb-scoreboard`**; apply changes with
 
 > Journald there has lost prior boots before, so a crash's logs may be gone after a
 > power-cycle. Capture logs before rebooting.
+
+## The upstream PR branch (`feature/verbose-128x64`)
+
+Branched from **upstream/master at `fbc1a4d` (v9.2.2)**, not from this fork's `master`,
+and contains only the layout work plus the statsapi data it needs. Six commits, each
+self-contained. Deliberately **excluded**: the layout editor, the layout monitor,
+`layout_preview.py`, `_anchors.json`, the Bullpen plugins, `homekit`, this file, the
+fork's `config.schema.json` preferences (rotation defaults, `api_refresh_rate`,
+`wbc_team`, the `x-*` editor annotations) and every other board size's coordinates.
+
+Two things differ from `master` on purpose and must not be "fixed" by copying master's
+version over:
+
+1. **`master` broke the other layouts and the PR branch does not.** On `master`,
+   `inning.arrow` was converted to absolute coordinates on *all six* sizes and
+   `_render_inning_break` was deleted, so no layout draws "Mid 5th" any more. On the PR
+   branch both schemes coexist: `x_offset`/`y_offset` keeps the original single arrow
+   and colours (`inning.arrow.up`/`down`), `x`/`y` opts into the stacked pair
+   (`inning.arrow.active`/`inactive`), and the break screen keeps its text unless
+   `inning.break.show_field` is set. `master`'s flag was `show_bases_and_outs`; the PR
+   calls it `show_field` because it governs the inning indicator too.
+2. **`layout_variant` is PR-only.** Renaming `w128h64VERBOSE.example.json` to
+   `w128h64.json` — the obvious way to ship this — is a trap: `validate_config.py`
+   reconciles a custom file against the example matching its name and *deletes* unknown
+   keys, so it would strip every verbose key, including silently swapping the arrow's
+   `x`/`y` back for `x_offset`/`y_offset`. Hence `"layout_variant": "VERBOSE"` in
+   `config.json`, which loads `w128h64VERBOSE.example.json` directly.
+
+Verified by hashing all **54** existing size/screen renders against upstream: byte-identical.
+Reproduce with a scratch copy of `layout_preview.py` (untracked — never commit it there,
+and note its `_SIZE_RE` rejects a name with a suffix until you widen it):
+
+```sh
+git show master:layout_preview.py > layout_preview.py
+git show master:preview_emulator_config.json > preview_emulator_config.json
+# then hash layout_preview.render(size, screen) for every size/screen, both here and in
+# a worktree at upstream/master, and diff the two maps
+```
+
+`teams.name.max_width` was **dropped** from the PR: it fixes w128h32's "Nationals"
+overlap, which would mean editing another size's coordinates. Still on `master`
+(`renderers/games/teams.py` + `tests/test_team_renderer.py`) if it is ever worth its own PR.
