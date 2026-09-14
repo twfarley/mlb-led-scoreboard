@@ -27,13 +27,26 @@ API_FIELDS = (
     + "currentPlay,result,eventType,playEvents,isPitch,pitchData,startSpeed,details,type,code,description,decisions,"
     + "winner,loser,save,id,linescore,outs,balls,strikes,note,inningState,currentInning,currentInningOrdinal,offense,"
     + "batter,inHole,onDeck,first,second,third,defense,pitcher,boxscore,teams,runs,players,seasonStats,pitching,wins,"
-    + "losses,saves,era,hits,errors,stats,pitching,numberOfPitches,weather,condition,temp,wind,metaData,timeStamp,"
+    + "losses,saves,era,hits,errors,stats,pitching,numberOfPitches,batting,avg,homeRuns,rbi,battingOrder,"
+    + "weather,condition,temp,wind,metaData,timeStamp,"
     + "absChallenges,remaining"
 )
 
 SCHEDULE_API_FIELDS = "dates,date,games,status,detailedState,abstractGameState,reason"
 
 GAME_UPDATE_RATE = 10
+
+
+def _article(value) -> str:
+    """ "a" or "an" for a speed or a pitch name.
+
+    Spoken aloud, "88" starts with a vowel ("eighty-eight"), so "a 88mph Slider"
+    reads wrong on a line that is otherwise prose.
+    """
+    text = str(value)
+    if text[:1] == "8":
+        return "an"
+    return "an" if text[:1].lower() in "aeiou" else "a"
 
 
 class Game:
@@ -299,6 +312,76 @@ class Game:
         except Exception:
             return ""
 
+    def batter_stat(self, stat):
+        """Season batting stat (avg / homeRuns / rbi) for the current batter."""
+        try:
+            batter_id = self._current_data["liveData"]["linescore"]["offense"]["batter"]["id"]
+            ID = Game._format_id(batter_id)
+            for side in ("away", "home"):
+                try:
+                    stats = self._current_data["liveData"]["boxscore"]["teams"][side]["players"][ID]["seasonStats"][
+                        "batting"
+                    ]
+                except (KeyError, TypeError):
+                    continue
+                return stats.get(stat)
+        except (KeyError, TypeError):
+            pass
+        return None
+
+    def batting_order_for(self, player_id):
+        """Spot in the order for a player id, or None.
+
+        battingOrder is a 3-digit string in the boxscore, so "800" is 8th and a
+        pinch hitter in that spot is "801" -- hence the integer division.
+        """
+        if player_id is None:
+            return None
+        try:
+            ID = Game._format_id(player_id)
+            for side in ("away", "home"):
+                try:
+                    order = self._current_data["liveData"]["boxscore"]["teams"][side]["players"][ID]["battingOrder"]
+                except (KeyError, TypeError):
+                    continue
+                return int(order) // 100
+        except (KeyError, TypeError, ValueError):
+            pass
+        return None
+
+    def __offense_id(self, slot):
+        try:
+            return self._current_data["liveData"]["linescore"]["offense"][slot]["id"]
+        except (KeyError, TypeError):
+            return None
+
+    def batter_batting_order(self):
+        """Spot in the order for the current batter, or None."""
+        return self.batting_order_for(self.__offense_id("batter"))
+
+    def on_deck_batting_order(self):
+        return self.batting_order_for(self.__offense_id("onDeck"))
+
+    def in_hole_batting_order(self):
+        return self.batting_order_for(self.__offense_id("inHole"))
+
+    def pitcher_era(self):
+        """Season ERA for the current pitcher, as a string, or None."""
+        try:
+            pitcher_id = self._current_data["liveData"]["linescore"]["defense"]["pitcher"]["id"]
+            ID = Game._format_id(pitcher_id)
+            for side in ("away", "home"):
+                try:
+                    era = self._current_data["liveData"]["boxscore"]["teams"][side]["players"][ID]["seasonStats"][
+                        "pitching"
+                    ]["era"]
+                except (KeyError, TypeError):
+                    continue
+                return str(era)
+        except (KeyError, TypeError):
+            pass
+        return None
+
     def balls(self):
         return self._current_data["liveData"]["linescore"].get("balls", 0)
 
@@ -370,6 +453,86 @@ class Game:
         ):
             result += "_looking"
         return result
+
+    def last_pitch_sentence(self):
+        """The pitch just thrown, in long form.
+
+        "Andrew Sears throws a 94mph Four-Seam Fastball, called strike"
+
+        Built from the last playEvent: `pitchData.startSpeed`,
+        `details.type.description` for the pitch, and `details.description` for the
+        call. All three already come through API_FIELDS.
+        """
+        try:
+            events = self._current_data["liveData"]["plays"].get("currentPlay", {}).get("playEvents", [])
+            event = events[-1]
+        except (KeyError, TypeError, IndexError):
+            return ""
+        if not event.get("isPitch", False):
+            return ""
+
+        details = event.get("details", {})
+        pitch = (details.get("type") or {}).get("description", "")
+        speed = (event.get("pitchData") or {}).get("startSpeed")
+        if not pitch and speed is None:
+            return ""
+
+        sentence = self.pitcher_full_name() or self.pitcher() or "Pitcher"
+        if speed is not None and pitch:
+            sentence += f" throws {_article(round(speed))} {round(speed)}mph {pitch}"
+        elif pitch:
+            sentence += f" throws {_article(pitch)} {pitch}"
+        else:
+            sentence += f" throws {round(speed)}mph"
+
+        call = details.get("description", "")
+        # Skip a call that just repeats the pitch type, and skip "In play, ..." --
+        # the resolved play arrives seconds later and says what actually happened,
+        # so announcing "in play, out(s)" first is both clumsy and redundant.
+        if call and call.lower() != pitch.lower() and not call.lower().startswith("in play"):
+            sentence += f" ({call})"
+        return sentence
+
+    def pitcher_full_name(self):
+        try:
+            pitcher_id = self._current_data["liveData"]["linescore"]["defense"]["pitcher"]["id"]
+            return self.full_name(pitcher_id)
+        except Exception:
+            return ""
+
+    def current_play_description(self):
+        """The most informative text available for what is happening right now.
+
+        Most specific first:
+
+        1. the resolved play, which MLB only populates once an at-bat ends;
+        2. the pitch just thrown, which refreshes every delivery and so covers
+           most of an at-bat;
+        3. the last resolved play we saw, held rather than cleared.
+
+        (3) can be stale -- across a pitching change or between innings there is
+        nothing live to say -- but holding the last thing that happened beats
+        leaving the line blank for minutes at a time.
+        """
+        try:
+            resolved = (
+                self._current_data["liveData"]["plays"].get("currentPlay", {}).get("result", {}).get("description", "")
+            )
+        except (KeyError, TypeError):
+            resolved = ""
+
+        if resolved:
+            self._last_play_description = resolved
+            return resolved
+
+        # Deliberately does not overwrite the remembered play: once pitches stop
+        # arriving, the last completed play is the more useful thing to fall back
+        # to than the last pitch of an at-bat that has since ended.
+        pitch = self.last_pitch_sentence()
+        if pitch:
+            return pitch
+
+        return getattr(self, "_last_play_description", "")
 
     def game_recap_blurb(self):
         return self._blurb_data.recap()
