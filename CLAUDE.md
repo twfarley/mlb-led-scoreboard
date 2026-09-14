@@ -358,7 +358,9 @@ version over:
 
 Verified by hashing all **54** existing size/screen renders against upstream: byte-identical.
 Reproduce with a scratch copy of `layout_preview.py` (untracked — never commit it there,
-and note its `_SIZE_RE` rejects a name with a suffix until you widen it):
+and note its `_SIZE_RE` rejects a name with a suffix until you widen it). **Importing it
+rewrites `scrolling_speed` in the tracked `config.example.json`** — `git status` before
+committing anything after a preview run:
 
 ```sh
 git show master:layout_preview.py > layout_preview.py
