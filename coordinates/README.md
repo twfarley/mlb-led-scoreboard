@@ -16,6 +16,13 @@ You can edit these coordinates to display parts of the scoreboard in any way you
 2. Edit the coordinates in `w64h32.json` as you see fit
 3. Your customized coordinates will always take precedence over the example defaults
 
+## Alternative Layouts
+
+A file whose name carries a suffix after the dimensions, such as `w128h64VERBOSE.example.json`, is an alternative arrangement for that board size rather than a separate size. Load one with the `layout_variant` config option (`"layout_variant": "VERBOSE"`), and customize it by copying it to `w128h64VERBOSE.json` — the same `.json` override rule as any other layout.
+
+> [!IMPORTANT]
+> Do not rename a variant to the plain `w<cols>h<rows>` name. A custom file is reconciled against the example whose name it matches, and keys the example does not have are **deleted**, so a variant copied to `w128h64.json` would lose everything specific to it on the next update.
+
 ## Fonts
 Any scoreboard element that prints text can accept a `"font_name"` attribute. Supported fonts need to be named with `<width>x<height>.bdf` (or `<width>x<height>B.bdf` for bold fonts). The font loader will search `assets/` first for the specified font and then it will fall back to searching `matrix/fonts/` if one was not found.
 
@@ -43,6 +50,27 @@ The layout can have a couple of different states where things are rendered diffe
 Team records can be displayed on the team banner during most game states, such as pregame, live, and postgame.
 * `enabled` (true/false) Turn feature on/off
 * `position` (absolute/relative) Defines origin of the text. When `absolute`, the origin is always `(0, 0)`. When `relative`, the origin is relative to the end of the team name in the banner.
+
+`final.record` is separate, and only draws on the final screen. The team banner is drawn on every screen, so a record placed there with `teams.record` also appears mid-game; a layout whose live screen already fills the space beside the score can only show records once the game is over.
+* `enabled` (true/false) Turn feature on/off
+* `away` / `home` Where each record is drawn.
+
+## At-Bat Detail
+These are all off unless a layout gives them coordinates and sets `enabled`. A layout that does not mention them renders exactly as it did before.
+* `atbat.batter_order` The batter's spot in the order, drawn where the `AB:` label otherwise goes. When shown, the label is dropped — the number occupies the same space and says more. Falls back to `AB:` for a batter with no spot in the order, such as a pitcher in a DH game.
+* `atbat.batter_stats` The batter's season AVG, HR and RBI. These are laid out right-to-left from the panel's right edge rather than placed at an `x`, because their combined width depends on the numbers themselves; only `y` is configurable.
+  * `show_era` (true/false) Also draw the pitcher's season ERA on the pitcher row, aligned with the column above it, replacing the `P:` label.
+* `atbat.play_description` A line of play-by-play text. It is drawn in place when it fits the configured `width` and scrolled once when it does not.
+  * The text is the resolved play when MLB has published one, otherwise a description of the pitch just thrown, otherwise the last resolved play held over. MLB only fills in a play's description once the at-bat *ends*, so without the fallbacks the line would be empty through most of every at-bat.
+
+## Inning Indicator
+`inning.arrow` accepts either placement:
+* `x_offset` / `y_offset` — one arrow, positioned relative to the inning number, coloured `inning.arrow.up` or `inning.arrow.down` depending on the half being played.
+* `x` / `y` — the tip of each arrow, placed absolutely. Both arrows are drawn: the active half in `inning.arrow.active` and the other in `inning.arrow.inactive`, so the indicator keeps the same shape all game instead of moving between two positions. Through an inning break the upcoming half blinks.
+
+## Inning Break
+* `inning.break.show_field` (true/false) Replaces the `Mid 5th` text with the live screen's furniture: the diamond and out markers in `inning.break.inactive`, plus the inning indicator. Between halves of an inning there are no runners and no outs to report, hence the dimming. Only usable on a layout whose due-up display leaves the diamond's space free.
+* `inning.break.due_up.scroll` Draws the due-up batters on one scrolling line, with each batter's spot in the order, instead of the stacked `leadoff` / `on_deck` / `in_hole` rows and the `Due` / `Up:` labels.
 
 ## Updates
 The software develops and releases features with full support for the default layouts, so custom layouts may look unsatisfactory if you update to later versions of the scoreboard. If you as a user decide to create a custom layout file, you are responsible for tweaking the coordinates to your liking with each update.

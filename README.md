@@ -50,6 +50,7 @@ If you'd like to see support for another set of board dimensions, or have design
   * [Command Line Flags](#command-line-flags)
 - [Personalization](#personalization)
   * [Custom Board Layout](#custom-board-layout)
+  * [Alternative Layouts](#alternative-layouts)
   * [Custom Colors](#custom-colors)
   * [Weather](#weather)
   * [Plugins](#plugins)
@@ -452,6 +453,41 @@ If you're feeling adventurous (and we highly encourage it!), the sections below 
 
 ### Custom Board Layout
 You have the ability to customize the way things are placed on the board (maybe you would prefer to see scrolling text for a pregame a bit higher or lower). See the `coordinates/` directory for more information.
+
+### Alternative Layouts
+
+Some board sizes ship more than one arrangement. Select one with the `layout_variant` config option, which names the suffix of the layout file to load:
+
+```json
+"layout_variant": "VERBOSE"
+```
+
+On a 128x64 board that loads `coordinates/w128h64VERBOSE.example.json` instead of `coordinates/w128h64.example.json`. Leave it empty (the default) for the standard layout.
+
+> [!IMPORTANT]
+> Select a variant with this option rather than renaming files. Copying an alternative layout to `coordinates/w128h64.json` appears to work, but `validate_config.py` reconciles a custom file against the example whose name it matches and **deletes** any key that example does not have — so the next update would strip everything specific to the variant. `layout_variant` keeps a custom `w128h64VERBOSE.json` paired with the example it came from.
+
+**`VERBOSE` (128x64)** fits considerably more of a game onto the board, using data the standard layout does not show:
+
+<a href="assets/img/w128h64-verbose-live.png">
+  <img alt="128x64 verbose layout, live game" width="auto" height="180" src="assets/img/w128h64-verbose-live.png">
+</a>
+<a href="assets/img/w128h64-verbose-break.png">
+  <img alt="128x64 verbose layout, between innings" width="auto" height="180" src="assets/img/w128h64-verbose-break.png">
+</a>
+<a href="assets/img/w128h64-verbose-final.png">
+  <img alt="128x64 verbose layout, final score" width="auto" height="180" src="assets/img/w128h64-verbose-final.png">
+</a>
+
+* The batter's spot in the order, name, and season AVG / HR / RBI.
+* The pitcher's name and season ERA.
+* A line of play-by-play text — the resolved play when there is one, otherwise the pitch just thrown ("Andrew Sears throws a 94mph Four-Seam Fastball (Called Strike)").
+* Both halves of the inning indicator at once, the active half bright, so which half is being played reads the same way all game. Between innings the upcoming half blinks.
+* Team names and scores in the bottom half, at a size readable across a room, with the ABS challenge markers against the team colour edge.
+* Between innings, the diamond and out markers stay on screen dimmed and the due-up batters scroll along one line.
+* On the final screen, `FINAL` and the winning/losing pitcher line sit above the teams, with each team's season record beside its score.
+
+> The screenshots above are rendered from the test fixtures, not a live game.
 
 ### Custom Colors
 You have the ability to customize the colors of everything on the board. See the `colors/` directory for more information.
