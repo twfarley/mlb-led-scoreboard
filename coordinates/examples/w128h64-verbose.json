@@ -1,5 +1,5 @@
 {
-  "$schema": "./../schemas/coordinates/w128h64VERBOSE.schema.json",
+  "$schema": "./../schemas/coordinates/w128h64.schema.json",
   "format": 9.0,
   "defaults": {
     "font_name": "7x13"
@@ -117,13 +117,18 @@
     },
     "arrow": {
       "size": 3,
+      "stacked": true,
       "up": {
         "x": 62,
-        "y": 29
+        "y": 29,
+        "x_offset": -11,
+        "y_offset": -8
       },
       "down": {
         "x": 62,
-        "y": 51
+        "y": 51,
+        "x_offset": -11,
+        "y_offset": -4
       }
     }
   },

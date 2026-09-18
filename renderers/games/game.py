@@ -634,19 +634,18 @@ def _render_inning_display(canvas, layout, colors, inning: Inning):
 def __render_inning_half(canvas, layout, colors, inning: Inning):
     """The arrow showing which half of the inning is being played.
 
-    Two placements, chosen by what the layout provides:
+    Two placements, chosen by `inning.arrow.stacked`:
 
-    `x_offset`/`y_offset`  the original. One arrow, positioned relative to the
-                           inning number, drawn in inning.arrow.up/down.
-    `x`/`y`                absolute. Both arrows are drawn, the active half in
-                           inning.arrow.active and the other dimmed, so the
-                           indicator holds the same shape all game instead of
-                           jumping between two positions.
+    off (default)  one arrow, positioned relative to the inning number by
+                   `x_offset`/`y_offset`, drawn in inning.arrow.up/down.
+    on             both arrows drawn at their absolute `x`/`y`, the active half in
+                   inning.arrow.active and the other dimmed, so the indicator holds
+                   the same shape all game instead of jumping between two positions.
 
-    Absolute placement is what makes the arrows usable on a break screen, where
-    the inning number they would otherwise hang off is not necessarily there.
+    Stacked placement is what makes the arrows usable on a break screen, where the
+    inning number they would otherwise hang off is not necessarily there.
     """
-    if "x" in layout.coords("inning.arrow.up"):
+    if layout.coords("inning.arrow").get("stacked", False):
         __render_stacked_arrows(canvas, layout, colors, inning)
     else:
         __render_offset_arrow(canvas, layout, colors, inning)

@@ -85,15 +85,14 @@
     },
     "offset": {
       "type": "object",
+      "description": "Where one half's inning arrow goes. x_offset/y_offset place it relative to the inning number, x/y place the tip of the arrow absolutely; which pair is used depends on inning.arrow.stacked.",
       "properties": {
         "x_offset": { "type": "integer" },
-        "y_offset": { "type": "integer" }
+        "y_offset": { "type": "integer" },
+        "x":        { "type": "integer" },
+        "y":        { "type": "integer" }
       },
       "required": ["x_offset", "y_offset"]
-    },
-    "arrow_position": {
-      "description": "Relative to the inning number (x_offset/y_offset) or absolute (x/y, the tip of the arrow).",
-      "oneOf": [{ "$ref": "#/$defs/offset" }, { "$ref": "#/$defs/point" }]
     },
     "play_display": {
       "type": "object",
@@ -228,11 +227,15 @@
         },
         "arrow": {
           "type": "object",
-          "description": "The arrow showing which half of the inning is being played. Give x_offset/y_offset to place one arrow relative to the inning number, or x/y to place both arrows absolutely -- in which case the inactive half is drawn dimmed rather than hidden, and the upcoming half blinks through an inning break.",
+          "description": "The arrow showing which half of the inning is being played.",
           "properties": {
             "size": { "type": "integer" },
-            "up":   { "$ref": "#/$defs/arrow_position" },
-            "down": { "$ref": "#/$defs/arrow_position" }
+            "stacked": {
+              "type": "boolean",
+              "description": "Draw both arrows at their absolute x/y instead of one arrow at x_offset/y_offset from the inning number. The inactive half is dimmed rather than hidden, so the indicator holds the same shape all game, and the upcoming half blinks through an inning break. Needs the inning.arrow.active and inning.arrow.inactive colours."
+            },
+            "up":   { "$ref": "#/$defs/offset" },
+            "down": { "$ref": "#/$defs/offset" }
           }
         }
       }

@@ -456,18 +456,13 @@ You have the ability to customize the way things are placed on the board (maybe 
 
 ### Alternative Layouts
 
-Some board sizes ship more than one arrangement. Select one with the `layout_variant` config option, which names the suffix of the layout file to load:
+`coordinates/examples/` holds complete alternative arrangements for a board size. These are not selected by a config option — copy one over your own layout file and it becomes an ordinary custom layout:
 
-```json
-"layout_variant": "VERBOSE"
+```
+cp coordinates/examples/w128h64-verbose.json coordinates/w128h64.json
 ```
 
-On a 128x64 board that loads `coordinates/w128h64VERBOSE.example.json` instead of `coordinates/w128h64.example.json`. Leave it empty (the default) for the standard layout.
-
-> [!IMPORTANT]
-> Select a variant with this option rather than renaming files. Copying an alternative layout to `coordinates/w128h64.json` appears to work, but `validate_config.py` reconciles a custom file against the example whose name it matches and **deletes** any key that example does not have — so the next update would strip everything specific to the variant. `layout_variant` keeps a custom `w128h64VERBOSE.json` paired with the example it came from.
-
-**`VERBOSE` (128x64)** fits considerably more of a game onto the board, using data the standard layout does not show:
+**`w128h64-verbose.json`** fits considerably more of a game onto a 128x64 board, turning on options that every layout ships with disabled:
 
 <a href="assets/img/w128h64-verbose-live.png">
   <img alt="128x64 verbose layout, live game" width="auto" height="180" src="assets/img/w128h64-verbose-live.png">
@@ -486,6 +481,8 @@ On a 128x64 board that loads `coordinates/w128h64VERBOSE.example.json` instead o
 * Team names and scores in the bottom half, at a size readable across a room, with the ABS challenge markers against the team colour edge.
 * Between innings, the diamond and out markers stay on screen dimmed and the due-up batters scroll along one line.
 * On the final screen, `FINAL` and the winning/losing pitcher line sit above the teams, with each team's season record beside its score.
+
+Every one of those is an individual coordinate option — see the `coordinates/` directory for what each one does and how to turn it on in a layout of your own.
 
 > The screenshots above are rendered from the test fixtures, not a live game.
 
