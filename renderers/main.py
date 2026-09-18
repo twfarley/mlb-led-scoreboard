@@ -132,7 +132,13 @@ class MainRenderer:
 
             self.scrolling_text_pos = min(self.scrolling_text_pos, loop_point)
             pos = gamerender.render_live_game(
-                self.canvas, layout, colors, scoreboard, self.scrolling_text_pos, self.animation_time
+                self.canvas,
+                layout,
+                colors,
+                scoreboard,
+                self.scrolling_text_pos,
+                self.animation_time,
+                self.__blink_on(),
             )
             self.__update_scrolling_text_pos(pos, loop_point)
 
@@ -174,6 +180,17 @@ class MainRenderer:
                 self.canvas = self.matrix.SwapOnVSync(self.canvas)
 
         renderer.reset()
+
+    def __blink_on(self) -> bool:
+        """The on half of a 1Hz blink, for elements that pulse on their own schedule.
+
+        Neither clock the renderers already get can pace this: `animation_time`
+        only advances while a play is being animated, and the frame budget is a
+        user setting, so counting frames would tie the rate to `scrolling_speed`.
+        Kept here rather than in a renderer so drawing stays a function of its
+        arguments.
+        """
+        return int(time.monotonic()) % 2 == 0
 
     def __max_scroll_x(self, scroll_coords):
         scroll_max_x = scroll_coords["x"] + scroll_coords["width"]

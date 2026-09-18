@@ -1,5 +1,3 @@
-import time
-
 from bullpen.util import scrolling_text
 
 from data import status
@@ -15,13 +13,10 @@ from data.plays import PLAY_RESULTS
 
 from renderers.games import nohitter
 
-# Scroll state for the optional play-by-play description.
-_play_desc_pos = None
-_play_desc_last = None
-_play_desc_finished = False
 
-
-def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboard, text_pos, animation_time):
+def render_live_game(
+    canvas, layout: Layout, colors: Color, scoreboard: Scoreboard, text_pos, animation_time, blink_on=False
+):
     pos = 0
     if not status.is_inning_break(scoreboard.inning.state):
         pos = _render_at_bat(
@@ -49,9 +44,9 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
         # Game.current_play_description() already picks the best available text --
         # resolved play, else the pitch just thrown -- so there is nothing left for
         # the renderer to substitute.
-        pos = max(pos, __render_play_description(canvas, layout, colors, scoreboard.play_description))
+        pos = max(pos, __render_play_description(canvas, layout, colors, scoreboard.play_description, text_pos))
 
-        _render_inning_display(canvas, layout, colors, scoreboard.inning)
+        _render_inning_display(canvas, layout, colors, scoreboard.inning, blink_on)
 
     elif __break_shows_field(layout):
         # An opt-in break screen that keeps the live screen's furniture instead of
@@ -63,7 +58,7 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
         # The inning number and the blinking arrow then carry what the text used to
         # say, in a fraction of the space.
         __render_dimmed_field(canvas, layout, colors, scoreboard)
-        _render_inning_display(canvas, layout, colors, scoreboard.inning)
+        _render_inning_display(canvas, layout, colors, scoreboard.inning, blink_on)
         pos = _render_due_up(canvas, layout, colors, scoreboard.atbat, text_pos)
 
     else:
@@ -213,66 +208,33 @@ def __render_batter_order(canvas, layout, colors, atbat: AtBat):
     return coords["x"] + len(text) * font["size"]["width"]
 
 
-def __render_play_description(canvas, layout, colors, description):
-    """Draw the play-by-play line: static if it fits, else scroll it once.
+def __render_play_description(canvas, layout, colors, description, text_pos):
+    """Draw the play-by-play line: static if it fits, else scrolled.
 
-    Short descriptions are common -- "Mound visit.", "Strikeout.", "Wild pitch." --
-    and scrolling one that already fits is just harder to read for no gain. Only
-    text wider than the slot animates, and it returns a non-zero width while doing
-    so, which holds the rotation until it has been read once.
+    Shares the renderer's scroll position with the batter and pitcher rows rather
+    than tracking its own, so there is one thing advancing the text per frame.
+    scrolling_text() draws a description that already fits in place -- "Mound
+    visit.", "Wild pitch." are common and scrolling them is just harder to read --
+    and returns a width only while it is actually scrolling, which is what holds
+    the rotation until the line has been read.
     """
-    global _play_desc_pos, _play_desc_last, _play_desc_finished
     coords = __optional(layout, "atbat.play_description")
-    if coords is None:
-        return 0
-    if not description:
-        _play_desc_pos = None
-        _play_desc_last = None
-        _play_desc_finished = True
+    if coords is None or not description:
         return 0
 
-    font = layout.font("atbat.play_description")
-    color = colors.graphics_color("atbat.play_result")
-    bgcolor = colors.graphics_color("default.background")
-    x, y, w = coords["x"], coords["y"], coords["width"]
-    total_px = len(description) * font["size"]["width"]
-
-    if total_px <= w:
-        # Nothing to animate. Clear the scroll state too, so a long description
-        # that is replaced by a short one does not leave a stale position behind
-        # for the next long one to resume from.
-        _play_desc_pos = None
-        _play_desc_last = description
-        _play_desc_finished = True
-        graphics.DrawText(canvas, font["font"], x, y, color, description)
-        return 0
-
-    if description != _play_desc_last:
-        _play_desc_pos = x + w
-        _play_desc_last = description
-        _play_desc_finished = False
-
-    scrolling_text(
+    return scrolling_text(
         canvas,
         graphics,
-        x,
-        y,
-        w,
-        font,
-        color,
-        bgcolor,
+        coords["x"],
+        coords["y"],
+        coords["width"],
+        layout.font("atbat.play_description"),
+        colors.graphics_color("atbat.play_result"),
+        colors.graphics_color("default.background"),
         description,
-        _play_desc_pos,
+        text_pos,
         center=False,
-        force_scroll=True,
     )
-
-    _play_desc_pos -= 1
-    if _play_desc_pos + total_px < 0:
-        _play_desc_pos = x + w
-        _play_desc_finished = True
-
-    return 0 if _play_desc_finished else total_px
 
 
 def __render_batter_text(canvas, layout, colors, atbat: AtBat, text_pos):
@@ -626,12 +588,12 @@ def _render_inning_break(canvas, layout, colors, inning: Inning):
     graphics.DrawText(canvas, num_font["font"], num_coords["x"], num_coords["y"], color, num)
 
 
-def _render_inning_display(canvas, layout, colors, inning: Inning):
+def _render_inning_display(canvas, layout, colors, inning: Inning, blink_on=False):
     __render_inning_number(canvas, layout, colors, inning)
-    __render_inning_half(canvas, layout, colors, inning)
+    __render_inning_half(canvas, layout, colors, inning, blink_on)
 
 
-def __render_inning_half(canvas, layout, colors, inning: Inning):
+def __render_inning_half(canvas, layout, colors, inning: Inning, blink_on=False):
     """The arrow showing which half of the inning is being played.
 
     Two placements, chosen by `inning.arrow.stacked`:
@@ -646,7 +608,7 @@ def __render_inning_half(canvas, layout, colors, inning: Inning):
     inning number they would otherwise hang off is not necessarily there.
     """
     if layout.coords("inning.arrow").get("stacked", False):
-        __render_stacked_arrows(canvas, layout, colors, inning)
+        __render_stacked_arrows(canvas, layout, colors, inning, blink_on)
     else:
         __render_offset_arrow(canvas, layout, colors, inning)
 
@@ -673,7 +635,7 @@ def __render_offset_arrow(canvas, layout, colors, inning: Inning):
         graphics.DrawLine(canvas, x - offset, y + (offset * dir), x + offset, y + (offset * dir), color)
 
 
-def __render_stacked_arrows(canvas, layout, colors, inning: Inning):
+def __render_stacked_arrows(canvas, layout, colors, inning: Inning, blink_on):
     up = layout.coords("inning.arrow.up")
     down = layout.coords("inning.arrow.down")
     size = layout.coords("inning.arrow")["size"]
@@ -684,13 +646,9 @@ def __render_stacked_arrows(canvas, layout, colors, inning: Inning):
         return
 
     if status.is_inning_break(inning.state):
-        # Blink whichever half is about to be played, at 1 Hz. Middle means the
-        # bottom is next; End means the top of the next inning is.
-        #
-        # Wall clock rather than the renderer's animation_time, which only advances
-        # during a play animation and is pinned at 0 the rest of the time.
+        # Blink whichever half is about to be played. Middle means the bottom is
+        # next; End means the top of the next inning is.
         upcoming_is_top = inning.state == Inning.END
-        blink_on = int(time.time()) % 2 == 0
         up_color = (active if blink_on else inactive) if upcoming_is_top else inactive
         down_color = inactive if upcoming_is_top else (active if blink_on else inactive)
     else:
