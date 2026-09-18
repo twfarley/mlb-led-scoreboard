@@ -47,8 +47,8 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
 
         # Optional full play-by-play line (no-op unless the layout enables it).
         # Game.current_play_description() already picks the best available text --
-        # resolved play, else the pitch just thrown, else the last play held -- so
-        # there is nothing left for the renderer to substitute.
+        # resolved play, else the pitch just thrown -- so there is nothing left for
+        # the renderer to substitute.
         pos = max(pos, __render_play_description(canvas, layout, colors, scoreboard.play_description))
 
         _render_inning_display(canvas, layout, colors, scoreboard.inning)
@@ -204,11 +204,11 @@ def __render_batter_order(canvas, layout, colors, atbat: AtBat):
     Returns the x the name should start at, or None when not enabled.
     """
     coords = __optional(layout, "atbat.batter_order")
-    if coords is None or atbat.batting_order is None:
+    if coords is None or atbat.batter_order is None:
         return None
     font = layout.font("atbat.batter_order")
     color = colors.graphics_color("atbat.batter_stats")
-    text = f"{atbat.batting_order}."
+    text = f"{atbat.batter_order}."
     graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, text)
     return coords["x"] + len(text) * font["size"]["width"]
 
@@ -511,9 +511,9 @@ def __due_up_line(atbat: AtBat) -> str:
     """
     parts = []
     for order, name in (
-        (atbat.batting_order, atbat.batter),
-        (atbat.onDeck_order, atbat.onDeck),
-        (atbat.inHole_order, atbat.inHole),
+        (atbat.batter_order, atbat.batter),
+        (atbat.on_deck_order, atbat.on_deck),
+        (atbat.in_hole_order, atbat.in_hole),
     ):
         if not name:
             continue
@@ -571,7 +571,7 @@ def _render_due_up(canvas, layout, colors, atbat: AtBat, text_pos):
         batter_font,
         batter_color,
         background,
-        atbat.onDeck,
+        atbat.on_deck,
         text_pos,
         center=False,
     )
@@ -584,7 +584,7 @@ def _render_due_up(canvas, layout, colors, atbat: AtBat, text_pos):
         batter_font,
         batter_color,
         background,
-        atbat.inHole,
+        atbat.in_hole,
         text_pos,
         center=False,
     )

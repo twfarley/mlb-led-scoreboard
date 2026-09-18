@@ -104,26 +104,22 @@ class TestCurrentPlayDescription(unittest.TestCase):
         game = game_with(events=[pitch()], players=PITCHER, pitcher_id=660271)
         self.assertEqual(game.current_play_description(), "Shohei Ohtani throws an 88mph Slider (Ball)")
 
-    def test_holds_the_last_resolved_play_when_there_is_nothing_live(self):
+    def test_empty_when_there_is_nothing_live(self):
         """Between innings and across a pitching change there is no pitch and no
-        result. Holding beats blanking, which is the whole point of the change."""
+        result. Nothing is remembered across updates -- a Game is rebuilt often
+        enough while rotating that held state would be unreliable anyway."""
         game = game_with(result_description="Ohtani singles on a line drive.", players=PITCHER)
         game.current_play_description()
 
         game._current_data["liveData"]["plays"]["currentPlay"] = {"result": {}}
-        self.assertEqual(game.current_play_description(), "Ohtani singles on a line drive.")
+        self.assertEqual(game.current_play_description(), "")
 
-    def test_a_pitch_does_not_overwrite_the_remembered_play(self):
-        """Once pitches stop, the last completed play is more useful than the last
-        pitch of an at-bat that has since ended."""
+    def test_the_live_pitch_wins_once_the_result_is_cleared(self):
         game = game_with(result_description="Ohtani doubles.", players=PITCHER, pitcher_id=660271)
-        game.current_play_description()
+        self.assertEqual(game.current_play_description(), "Ohtani doubles.")
 
         game._current_data["liveData"]["plays"]["currentPlay"] = {"result": {}, "playEvents": [pitch()]}
         self.assertIn("throws", game.current_play_description())
-
-        game._current_data["liveData"]["plays"]["currentPlay"] = {"result": {}}
-        self.assertEqual(game.current_play_description(), "Ohtani doubles.")
 
     def test_empty_when_nothing_has_happened_yet(self):
         self.assertEqual(game_with().current_play_description(), "")
