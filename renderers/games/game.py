@@ -111,6 +111,19 @@ def __optional(layout, key):
     return coords if coords.get("enabled", False) else None
 
 
+def __looped_pos(text_pos, x, width, text, font):
+    """Wrap the shared scroll position onto one row's own cycle.
+
+    Every scrolling row is driven by the single position MainRenderer decrements
+    once per frame, and the rotation holds until the longest of them has been read.
+    Without a wrap the short rows pay for the long one: a batter's name alongside a
+    60-character play description scrolls off in a couple of seconds and then leaves
+    its row blank for the twenty the description still needs.
+    """
+    cycle = len(text) * font["size"]["width"] + width
+    return x + width - ((x + width - text_pos) % cycle)
+
+
 def __break_shows_field(layout):
     """Whether the break screen keeps the field furniture instead of "Mid 5th".
 
@@ -200,7 +213,7 @@ def __render_batter_order(canvas, layout, colors, atbat: AtBat):
 
 
 def __render_play_description(canvas, layout, colors, description, text_pos):
-    """Draw the play-by-play line: static if it fits, else scrolled.
+    """Draw the play-by-play line: centred if it fits, else scrolled.
 
     Shares the renderer's scroll position with the batter and pitcher rows rather
     than tracking its own, so there is one thing advancing the text per frame.
@@ -213,18 +226,19 @@ def __render_play_description(canvas, layout, colors, description, text_pos):
     if coords is None or not description:
         return 0
 
+    font = layout.font("atbat.play_description")
+    x, width = coords["x"], coords["width"]
     return scrolling_text(
         canvas,
         graphics,
-        coords["x"],
+        x,
         coords["y"],
-        coords["width"],
-        layout.font("atbat.play_description"),
+        width,
+        font,
         colors.graphics_color("atbat.play_result"),
         colors.graphics_color("default.background"),
         description,
-        text_pos,
-        center=False,
+        __looped_pos(text_pos, x, width, description, font),
     )
 
 
@@ -263,7 +277,7 @@ def __render_batter_text(canvas, layout, colors, atbat: AtBat, text_pos):
         color,
         bgcolor,
         atbat.batter,
-        text_pos + offset,
+        __looped_pos(text_pos + offset, name_x, width, atbat.batter, font),
         center=False,
     )
     if order_x is None:
@@ -314,7 +328,7 @@ def __render_pitcher_text(canvas, layout, colors, atbat: AtBat, pitches: Pitches
         color,
         bgcolor,
         pitcher,
-        text_pos,
+        __looped_pos(text_pos, name_x, width, pitcher, font),
         center=False,
     )
     if era_x is None:
