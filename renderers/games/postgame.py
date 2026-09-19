@@ -25,17 +25,7 @@ def render_postgame(
 
 
 def _render_records(canvas, layout, colors, scoreboard):
-    """Season records beside the final score, when the layout asks for them.
-
-    Separate from `teams.record`, which the banner draws on every screen: on a
-    board where the live screen already fills the space to the right of the team
-    block, records can only go there once the game is over. Drawn from here rather
-    than from the banner so nothing else has to become screen-aware.
-
-    The record MLB reports in `gameData` for a completed game already includes that
-    game -- verified against the standings on a game that had just gone final -- so
-    there is nothing to wait for and no correction to apply.
-    """
+    """Season records beside the final score, when the layout asks for them."""
     try:
         coords = layout.coords("final.record")
     except KeyError:

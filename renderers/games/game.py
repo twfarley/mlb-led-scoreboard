@@ -15,8 +15,11 @@ from renderers.games import nohitter
 
 
 def render_live_game(
-    canvas, layout: Layout, colors: Color, scoreboard: Scoreboard, text_pos, animation_time, blink_on=False
+    canvas, layout: Layout, colors: Color, scoreboard: Scoreboard, text_pos, animation_time, frame_count=0
 ):
+    # Same cadence as the play-result animation below, off the free-running frame
+    # count so it keeps blinking when no play is being animated.
+    blink_on = bool((frame_count // 6) % 2)
     pos = 0
     if not status.is_inning_break(scoreboard.inning.state):
         pos = _render_at_bat(
@@ -40,23 +43,11 @@ def render_live_game(
         _render_outs(canvas, layout, colors, scoreboard.outs)
         _render_bases(canvas, layout, colors, scoreboard.bases, scoreboard.homerun(), (animation_time % 16) // 5)
 
-        # Optional full play-by-play line (no-op unless the layout enables it).
-        # Game.current_play_description() already picks the best available text --
-        # resolved play, else the pitch just thrown -- so there is nothing left for
-        # the renderer to substitute.
         pos = max(pos, __render_play_description(canvas, layout, colors, scoreboard.play_description, text_pos))
 
         _render_inning_display(canvas, layout, colors, scoreboard.inning, blink_on)
 
     elif __break_shows_field(layout):
-        # An opt-in break screen that keeps the live screen's furniture instead of
-        # the "Mid 5th" text. The diamond and the out markers stay put but dimmed
-        # -- between halves of an inning there are no runners and no outs to
-        # report, so drawing them lit would state something false, while dropping
-        # them makes the board visibly lose half its content.
-        #
-        # The inning number and the blinking arrow then carry what the text used to
-        # say, in a fraction of the space.
         __render_dimmed_field(canvas, layout, colors, scoreboard)
         _render_inning_display(canvas, layout, colors, scoreboard.inning, blink_on)
         pos = _render_due_up(canvas, layout, colors, scoreboard.atbat, text_pos)

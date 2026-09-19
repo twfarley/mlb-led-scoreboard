@@ -484,8 +484,6 @@ cp coordinates/examples/w128h64-verbose.json coordinates/w128h64.json
 
 Every one of those is an individual coordinate option — see the `coordinates/` directory for what each one does and how to turn it on in a layout of your own.
 
-> The screenshots above are rendered from the test fixtures, not a live game.
-
 ### Custom Colors
 You have the ability to customize the colors of everything on the board. See the `colors/` directory for more information.
 
