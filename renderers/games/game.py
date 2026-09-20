@@ -198,18 +198,27 @@ def __render_batter_stats(canvas, layout, colors, atbat: AtBat):
 
 
 def __render_batter_order(canvas, layout, colors, atbat: AtBat):
-    """Batting-order number ("7.") ahead of the batter name.
+    """Batting-order number ("7.") ahead of the batter name. No-op unless enabled."""
+    coords = __optional(layout, "atbat.batter_order")
+    if coords is None or atbat.batter_order is None:
+        return
+    font = layout.font("atbat.batter_order")
+    color = colors.graphics_color("atbat.batter_stats")
+    graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, f"{atbat.batter_order}.")
 
-    Returns the x the name should start at, or None when not enabled.
+
+def __batter_order_name_x(layout, atbat: AtBat):
+    """Where the name starts when the order number replaces the "AB:" label.
+
+    The order text ends with a period, whose right bearing already reads as a gap,
+    so only 1px is added -- the previous `fw - 2` left a visible 6px hole on a row
+    where every pixel is a character of the batter's name.
     """
     coords = __optional(layout, "atbat.batter_order")
     if coords is None or atbat.batter_order is None:
         return None
     font = layout.font("atbat.batter_order")
-    color = colors.graphics_color("atbat.batter_stats")
-    text = f"{atbat.batter_order}."
-    graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, text)
-    return coords["x"] + len(text) * font["size"]["width"]
+    return coords["x"] + len(f"{atbat.batter_order}.") * font["size"]["width"] + 1
 
 
 def __render_play_description(canvas, layout, colors, description, text_pos):
@@ -250,15 +259,10 @@ def __render_batter_text(canvas, layout, colors, atbat: AtBat, text_pos):
     offset = coords.get("offset", 0)
     fw = font["size"]["width"]
 
-    __render_batter_stats(canvas, layout, colors, atbat)
-
-    # With a batting-order number the "AB:" label is redundant, so it is
-    # replaced by the number and the name starts after it. The order text ends
-    # with a period, whose right bearing already reads as a gap, so only 1px is
-    # added -- the previous `fw - 2` left a visible 6px hole on a row where every
-    # pixel is a character of the batter's name.
-    order_x = __render_batter_order(canvas, layout, colors, atbat)
-    name_x = coords["x"] + fw * 3 if order_x is None else order_x + 1
+    # With a batting-order number the "AB:" label is redundant, so it is replaced by
+    # the number and the name starts after it.
+    order_name_x = __batter_order_name_x(layout, atbat)
+    name_x = coords["x"] + fw * 3 if order_name_x is None else order_name_x
 
     width = coords["width"]
     if __optional(layout, "atbat.batter_stats") is not None:
@@ -280,7 +284,14 @@ def __render_batter_text(canvas, layout, colors, atbat: AtBat, text_pos):
         __looped_pos(text_pos + offset, name_x, width, atbat.batter, font),
         center=False,
     )
-    if order_x is None:
+
+    # Everything neighbouring the name is drawn after it. scrolling_text() blanks a
+    # whole character cell either side of its window to hide partial glyphs, and
+    # this row butts up against both neighbours on purpose, so the blanking reaches
+    # into them -- it was eating the period off "7." and off ".267".
+    __render_batter_order(canvas, layout, colors, atbat)
+    __render_batter_stats(canvas, layout, colors, atbat)
+    if order_name_x is None:
         graphics.DrawText(canvas, font["font"], coords["x"], coords["y"], color, "AB:")
     return pos
 
