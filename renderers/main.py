@@ -32,7 +32,6 @@ class MainRenderer:
         self.plugins = plugins
 
         self.animation_time = 0
-        self.frame_count = 0
 
     def render(self) -> NoReturn:
         while True:
@@ -67,7 +66,6 @@ class MainRenderer:
             )
             while cond():
                 with frame_pacer(self.data.config.scrolling_speed):
-                    self.frame_count += 1
                     self.data.config.layout.state_for_game(game)
                     self.__draw_game(game)
 
@@ -122,10 +120,7 @@ class MainRenderer:
                 self.scrolling_finished = True
 
         else:  # draw a live game
-            if scoreboard.homerun() or scoreboard.strikeout() or scoreboard.hit() or scoreboard.walk():
-                self.animation_time += 1
-            else:
-                self.animation_time = 0
+            self.animation_time += 1
 
             if status.is_inning_break(scoreboard.inning.state):
                 loop_point = self.data.config.layout.coords("inning.break.due_up")["loop"]
@@ -140,7 +135,6 @@ class MainRenderer:
                 scoreboard,
                 self.scrolling_text_pos,
                 self.animation_time,
-                self.frame_count,
             )
             self.__update_scrolling_text_pos(pos, loop_point)
 

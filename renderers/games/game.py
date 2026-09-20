@@ -14,12 +14,10 @@ from data.plays import PLAY_RESULTS
 from renderers.games import nohitter
 
 
-def render_live_game(
-    canvas, layout: Layout, colors: Color, scoreboard: Scoreboard, text_pos, animation_time, frame_count=0
-):
-    # Same cadence as the play-result animation below, off the free-running frame
-    # count so it keeps blinking when no play is being animated.
-    blink_on = bool((frame_count // 6) % 2)
+def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboard, text_pos, animation_time):
+    # One phase for everything on the live screen that pulses: the play-result flash
+    # and the inning arrow blink.
+    animation = (animation_time // 6) % 2
     pos = 0
     if not status.is_inning_break(scoreboard.inning.state):
         pos = _render_at_bat(
@@ -29,7 +27,7 @@ def render_live_game(
             scoreboard.atbat,
             text_pos,
             scoreboard.play_result,
-            (animation_time // 6) % 2,
+            animation,
             scoreboard.pitches,
         )
 
@@ -45,11 +43,11 @@ def render_live_game(
 
         pos = max(pos, __render_play_description(canvas, layout, colors, scoreboard.play_description, text_pos))
 
-        _render_inning_display(canvas, layout, colors, scoreboard.inning, blink_on)
+        _render_inning_display(canvas, layout, colors, scoreboard.inning, animation)
 
     elif __break_shows_field(layout):
         __render_dimmed_field(canvas, layout, colors, scoreboard)
-        _render_inning_display(canvas, layout, colors, scoreboard.inning, blink_on)
+        _render_inning_display(canvas, layout, colors, scoreboard.inning, animation)
         pos = _render_due_up(canvas, layout, colors, scoreboard.atbat, text_pos)
 
     else:
@@ -64,8 +62,7 @@ def _render_at_bat(canvas, layout, colors, atbat: AtBat, text_pos, play_result, 
     plength = __render_pitcher_text(canvas, layout, colors, atbat, pitches, text_pos)
     __render_pitch_text(canvas, layout, colors, pitches)
     __render_pitch_count(canvas, layout, colors, pitches)
-    results = list(PLAY_RESULTS.keys())
-    if play_result in results and __should_render_play_result(play_result, layout):
+    if play_result in PLAY_RESULTS and __should_render_play_result(play_result, layout):
         if animation:
             __render_play_result(canvas, layout, colors, play_result)
         return plength
