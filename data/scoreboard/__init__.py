@@ -102,4 +102,6 @@ class Scoreboard:
             s += " Reason: '{}';".format(self.reason)
         if self.note:
             s += " Notes: '{}';".format(self.note)
+        if self.play_description:
+            s += " Play: '{}';".format(self.play_description)
         return s
