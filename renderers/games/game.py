@@ -111,7 +111,7 @@ def __optional(layout, key):
     return coords if coords.get("enabled", False) else None
 
 
-def __looped_pos(text_pos, x, width, text, font):
+def __looped_pos(layout, text_pos, x, width, text, font):
     """Wrap the shared scroll position onto one row's own cycle.
 
     Every scrolling row is driven by the single position MainRenderer decrements
@@ -119,9 +119,17 @@ def __looped_pos(text_pos, x, width, text, font):
     Without a wrap the short rows pay for the long one: a batter's name alongside a
     60-character play description scrolls off in a couple of seconds and then leaves
     its row blank for the twenty the description still needs.
+
+    The cycle is anchored to the loop point -- the value MainRenderer resets the
+    shared position to -- rather than to the raw position, so each row begins its
+    pass just off its own right edge and scrolls on from there. Anchoring to the
+    position itself lands every row at whatever phase the counter happens to be in:
+    the play line, whose slot ends at the far edge of the board, started 13px into
+    its own window with the first character already showing.
     """
     cycle = len(text) * font["size"]["width"] + width
-    return x + width - ((x + width - text_pos) % cycle)
+    elapsed = (layout.coords("atbat")["loop"] - text_pos) % cycle
+    return x + width - elapsed
 
 
 def __break_shows_field(layout):
@@ -247,7 +255,7 @@ def __render_play_description(canvas, layout, colors, description, text_pos):
         colors.graphics_color("atbat.play_result"),
         colors.graphics_color("default.background"),
         description,
-        __looped_pos(text_pos, x, width, description, font),
+        __looped_pos(layout, text_pos, x, width, description, font),
     )
 
 
@@ -281,7 +289,7 @@ def __render_batter_text(canvas, layout, colors, atbat: AtBat, text_pos):
         color,
         bgcolor,
         atbat.batter,
-        __looped_pos(text_pos + offset, name_x, width, atbat.batter, font),
+        __looped_pos(layout, text_pos + offset, name_x, width, atbat.batter, font),
         center=False,
     )
 
@@ -339,7 +347,7 @@ def __render_pitcher_text(canvas, layout, colors, atbat: AtBat, pitches: Pitches
         color,
         bgcolor,
         pitcher,
-        __looped_pos(text_pos, name_x, width, pitcher, font),
+        __looped_pos(layout, text_pos, name_x, width, pitcher, font),
         center=False,
     )
     if era_x is None:
