@@ -517,7 +517,7 @@ def render(
     from data.scoreboard.postgame import Postgame
     from data.scoreboard.pregame import Pregame
     from bullpen.time_formats import TIME_FORMAT_12H
-    from renderers.games import irregular, postgame as postgamerender, pregame as pregamerender, teams
+    from renderers.games import irregular, line_score, postgame as postgamerender, pregame as pregamerender, teams
     from renderers.games import game as gamerender
 
     values = coords if coords is not None else _coords_for(size)
@@ -589,6 +589,16 @@ def render(
     else:
         gamerender.render_live_game(canvas, layout, colors, scoreboard, text_pos, 0)
 
+    # Mirrors __draw_game again: the line score sits on the bands the banner
+    # paints, so it draws after the banner, and the banner drops its own score
+    # because R in the line score is the same number.
+    line_score_key = None
+    if spec.base == "final":
+        line_score_key = "final.line_score"
+    elif spec.base == "live" and spec.inning_break:
+        line_score_key = "inning.break.line_score"
+    shows_line_score = line_score_key is not None and line_score.enabled(layout, line_score_key)
+
     # Always last, so it paints over the screen content -- the fixed draw order.
     if not skip_banner:
         teams.render_team_banner(
@@ -597,9 +607,12 @@ def render(
             team_colors,
             scoreboard.home_team,
             scoreboard.away_team,
-            show_score=(spec.base != "pregame"),
+            show_score=(spec.base != "pregame") and not shows_line_score,
             scoreboard_colors=colors,
         )
+
+    if shows_line_score:
+        line_score.render_line_score(canvas, layout, colors, team_colors, scoreboard, line_score_key)
 
     matrix.SwapOnVSync(canvas)
 

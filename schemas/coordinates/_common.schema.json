@@ -155,6 +155,7 @@
         "inning":         { "$ref": "#/$defs/point" },
         "scrolling_text": { "$ref": "#/$defs/point_width" },
         "nohit_text":     { "$ref": "#/$defs/point" },
+        "line_score":     { "$ref": "#/$defs/line_score" },
         "record": {
           "type": "object",
           "description": "Season records beside the final score. Independent of teams.record, which the team banner draws on every screen -- on a layout whose live screen fills the space right of the team block, records only fit once the game is over.",
@@ -163,6 +164,52 @@
             "enabled":   { "type": "boolean" },
             "away":      { "$ref": "#/$defs/point" },
             "home":      { "$ref": "#/$defs/point" }
+          }
+        }
+      }
+    },
+    "line_score": {
+      "type": "object",
+      "description": "Inning-by-inning runs with R/H/E totals, drawn across the team banner after it paints. Geometry only -- teams.line_score.show_innings is the switch, and having a block here is what says this board size knows where to put one. Extra innings slide the window so the oldest columns drop off the left, and a two-digit header buys its own room by dropping columns rather than by shrinking the ruled area.",
+      "properties": {
+        "font_name":  { "$ref": "#/$defs/font_name" },
+        "x":          { "type": "integer", "description": "Left edge of the first inning column." },
+        "cell_width": { "type": "integer", "description": "Width of one inning column, including the gap to the next. A floor: columns are shared out over the ruled area, so they widen when fewer of them fit." },
+        "innings":    { "type": "integer", "description": "How many inning columns to show at once. With cell_width it fixes the width of the ruled area, which is what stays put when a game into double figures trades columns for wider ones." },
+        "rhe_x":      { "type": "integer", "description": "Left edge of the R field; H and E follow at rhe_width intervals." },
+        "rhe_width":  { "type": "integer", "description": "Width of one total column. Wide enough for two digits plus a gap, or a 15-20-1 line reads as one number." },
+        "label": {
+          "type": "object",
+          "description": "Column headers. Deliberately a smaller font than the values so they read as headers rather than data.",
+          "properties": {
+            "font_name": { "$ref": "#/$defs/font_name" },
+            "y":         { "type": "integer" }
+          }
+        },
+        "away": {
+          "type": "object",
+          "properties": { "y": { "type": "integer" } },
+          "required": ["y"]
+        },
+        "home": {
+          "type": "object",
+          "properties": { "y": { "type": "integer" } },
+          "required": ["y"]
+        },
+        "separator": {
+          "type": "object",
+          "description": "Rules either side of the inning columns, offset from each row's y so they stay the height of the team abbreviation beside them.",
+          "properties": {
+            "offset": { "type": "integer" },
+            "height": { "type": "integer" }
+          }
+        },
+        "marker": {
+          "type": "object",
+          "description": "Block marking the half-inning in play, in that half's cell. Not drawn once the game is final.",
+          "properties": {
+            "size":   { "type": "integer" },
+            "offset": { "type": "integer", "description": "Top of the block, relative to that row's baseline. Positive clears the digits: a half already scoring has a number in the cell." }
           }
         }
       }
@@ -179,6 +226,7 @@
               "type": "boolean",
               "description": "Keep the diamond and out markers on screen through the break, drawn in the inning.break.inactive colour. Only safe on a layout whose due-up display leaves that space free."
             },
+            "line_score": { "$ref": "#/$defs/line_score" },
             "due_up": {
               "type": "object",
               "properties": {
@@ -436,6 +484,10 @@
             "away":                                 { "$ref": "#/$defs/named_point" },
             "home":                                 { "$ref": "#/$defs/named_point" },
             "show_hits_and_errors":                 { "type": "boolean" },
+            "show_innings": {
+              "type": "boolean",
+              "description": "Show an inning-by-inning line score on the break and final screens, placed by the inning.break.line_score / final.line_score blocks. It reports R/H/E itself, so it takes the place of the banner's score, the season records and the break screen's arrows, number, bases and outs rather than drawing over them."
+            },
             "show_abs_challenges":                  { "type": "boolean", "default": true },
             "compress_digits":                      { "type": "boolean" },
             "shorten_team_name_on_high_line_score": { "type": "boolean" },

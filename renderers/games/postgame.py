@@ -3,6 +3,7 @@ from data.config.color import Color
 from data.config.layout import Layout
 from data.scoreboard import Scoreboard
 from data.scoreboard.postgame import Postgame
+from renderers.games import line_score
 from renderers.games import nohitter
 from bullpen.util import center_text_position, scrolling_text
 
@@ -36,6 +37,11 @@ def _render_records(canvas, layout, colors, scoreboard):
     game -- verified against the standings on a game that had just gone final -- so
     there is nothing to wait for and no correction to apply.
     """
+    # A line score on this screen takes the same band, and it is the better use
+    # of it: the shape of the whole game rather than two season totals.
+    if line_score.enabled(layout, "final.line_score"):
+        return
+
     try:
         coords = layout.coords("final.record")
     except KeyError:

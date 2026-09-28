@@ -106,6 +106,14 @@ class TestLayoutAnchors(unittest.TestCase):
                 "news.wind",
                 "news.wind_speed",
                 "news.wind_dir",
+                # Every line score value is centred in its column, so `x` on the
+                # parent grid is a left edge but these rows are not.
+                "inning.break.line_score.label",
+                "inning.break.line_score.away",
+                "inning.break.line_score.home",
+                "final.line_score.label",
+                "final.line_score.away",
+                "final.line_score.home",
             },
         )
         self.assertEqual(

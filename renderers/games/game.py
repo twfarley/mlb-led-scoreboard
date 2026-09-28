@@ -13,6 +13,7 @@ from data.scoreboard.inning import Inning
 from data.scoreboard.pitches import Pitches
 from data.plays import PLAY_RESULTS
 
+from renderers.games import line_score
 from renderers.games import nohitter
 
 # Scroll state for the optional play-by-play description.
@@ -23,7 +24,8 @@ _play_desc_finished = False
 
 def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboard, text_pos, animation_time):
     pos = 0
-    if not status.is_inning_break(scoreboard.inning.state):
+    break_screen = status.is_inning_break(scoreboard.inning.state)
+    if not break_screen:
         pos = _render_at_bat(
             canvas,
             layout,
@@ -59,7 +61,11 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
         #
         # Off by default. Every other board size stacks the due-up names across
         # the space the diamond occupies, so drawing both puts text on top of it.
-        if __break_shows_bases_and_outs(layout):
+        # A line score owns the bottom half on this screen -- it carries the
+        # inning in its header and its marker -- so the diamond, the outs and
+        # the indicator below would only be drawn and then painted over.
+        owns_bottom = line_score.enabled(layout, "inning.break.line_score")
+        if not owns_bottom and __break_shows_bases_and_outs(layout):
             try:
                 idle = colors.graphics_color("inning.break.inactive")
             except KeyError:
@@ -70,8 +76,10 @@ def render_live_game(canvas, layout: Layout, colors: Color, scoreboard: Scoreboa
         pos = _render_due_up(canvas, layout, colors, scoreboard.atbat, text_pos)
 
     # Inning indicator (two stacked arrows + number) renders in both branches so
-    # the upcoming-inning blink stays visible during a break.
-    _render_inning_display(canvas, layout, colors, scoreboard.inning)
+    # the upcoming-inning blink stays visible during a break -- unless a break
+    # line score is already reporting the inning.
+    if not (break_screen and line_score.enabled(layout, "inning.break.line_score")):
+        _render_inning_display(canvas, layout, colors, scoreboard.inning)
 
     return pos
 

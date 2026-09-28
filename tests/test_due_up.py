@@ -13,8 +13,14 @@ line scrolls, so at the monitor's fixed scroll phase it sits off-canvas:
   * bases and outs must stay on screen but dimmed. Between halves of an inning
     there are no runners and no outs to report, so drawing them lit would state
     something false, while dropping them makes the board visibly lose furniture.
+
+That second guarantee is about a break screen with nothing better in the space.
+`teams.line_score.show_innings` puts an inning-by-inning line score there, which
+is furniture the dim diamond cannot compete with, so the two configurations are
+rendered separately below rather than one being allowed to mask the other.
 """
 
+import copy
 import io
 import unittest
 
@@ -69,11 +75,22 @@ class TestDueUpLine(unittest.TestCase):
         self.assertEqual(due_up_line(atbat(batter=None, on_deck=None, in_hole=None)), "")
 
 
-def render_break(text_pos, size=SIZE):
+def render_break(text_pos, size=SIZE, coords=None):
     layout_preview._layout_pool.clear()
-    png = layout_preview.render(size, "live_break", text_pos=text_pos)
+    png = layout_preview.render(size, "live_break", coords=coords, text_pos=text_pos)
     layout_preview._layout_pool.clear()
     return Image.open(io.BytesIO(png)).convert("RGB")
+
+
+def without_line_score(size=SIZE):
+    """The same layout with the line score switched off, as a coords override.
+
+    The switch lives in the file, so the only way to assert both behaviours in
+    one run is to hand `render` the other configuration rather than edit it.
+    """
+    coords = copy.deepcopy(layout_preview._coords_for(size))
+    coords["teams"]["line_score"]["show_innings"] = False
+    return coords
 
 
 class TestBreakScreen(unittest.TestCase):
@@ -91,8 +108,13 @@ class TestBreakScreen(unittest.TestCase):
 
     def test_the_stacked_form_does_not_also_draw(self):
         """`_render_due_up` returns early on the scroll config. If it ever stops
-        doing so, three 7x13 names land on top of the team colours."""
-        image = render_break(text_pos=0)
+        doing so, three 7x13 names land on top of the team colours.
+
+        Rendered without the line score: it carries the team colour band out to
+        the right edge, so every pixel in this region is lit and the "text is
+        denser than furniture" count below can no longer tell them apart.
+        """
+        image = render_break(text_pos=0, coords=without_line_score())
         pixels = image.load()
         drawn = {(x, y) for y in STACKED_ROWS for x in STACKED_COLUMNS if pixels[x, y] != BACKGROUND}
         # The bases diamond and the outs squares legitimately live in this region;
@@ -101,10 +123,21 @@ class TestBreakScreen(unittest.TestCase):
         self.assertLess(len(drawn), 200, "something text-shaped is drawn where the stacked names used to be")
 
     def test_bases_and_outs_are_drawn_in_the_inactive_colour(self):
-        image = render_break(text_pos=0)
+        image = render_break(text_pos=0, coords=without_line_score())
         pixels = image.load()
         colors = {pixels[x, y] for y in range(28, 64) for x in range(60, 128)}
         self.assertIn(INACTIVE, colors, "bases/outs should still be on screen during a break")
+
+    def test_the_line_score_takes_that_space_instead(self):
+        """Both in the same region at once is the failure worth guarding.
+
+        A dim diamond behind inning numbers is worse than either alone, and the
+        line score says more about the break than "no runners, no outs" does.
+        """
+        image = render_break(text_pos=0)
+        pixels = image.load()
+        colors = {pixels[x, y] for y in range(28, 64) for x in range(60, 128)}
+        self.assertNotIn(INACTIVE, colors, "the diamond should give way to the line score")
 
     def test_keeping_bases_and_outs_is_opt_in_per_layout(self):
         """The dim colour is shared, so it cannot be the gate.

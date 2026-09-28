@@ -40,6 +40,7 @@ class Scoreboard:
             game.abs_challenges_remaining("home") if status.is_live(game.status()) else None,
         )
         self.inning = Inning(game)
+        self.line_score = game.inning_line_score()
         self.bases = Bases(game)
         self.pitches = Pitches(game)
         self.outs = Outs(game)

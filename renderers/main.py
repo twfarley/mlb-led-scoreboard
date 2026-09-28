@@ -19,6 +19,7 @@ from renderers.games import game as gamerender
 from renderers.games import irregular
 from renderers.games import postgame as postgamerender
 from renderers.games import pregame as pregamerender
+from renderers.games import line_score
 from renderers.games import teams
 
 
@@ -76,6 +77,7 @@ class MainRenderer:
         scoreboard = Scoreboard(game)
         layout = self.data.config.layout
         colors = self.data.config.scoreboard_colors
+        line_score_key = None
 
         if status.is_pregame(game.status()):  # Draw the pregame information
             self.__max_scroll_x(layout.coords("pregame.scrolling_text"))
@@ -93,6 +95,7 @@ class MainRenderer:
             self.__update_scrolling_text_pos(pos, self.canvas.width)
 
         elif status.is_complete(game.status()):  # Draw the game summary
+            line_score_key = "final.line_score"
             self.__max_scroll_x(layout.coords("final.scrolling_text"))
             final = Postgame(game)
             pos = postgamerender.render_postgame(
@@ -126,6 +129,7 @@ class MainRenderer:
                 self.animation_time = 0
 
             if status.is_inning_break(scoreboard.inning.state):
+                line_score_key = "inning.break.line_score"
                 loop_point = self.data.config.layout.coords("inning.break.due_up")["loop"]
             else:
                 loop_point = self.data.config.layout.coords("atbat")["loop"]
@@ -136,6 +140,12 @@ class MainRenderer:
             )
             self.__update_scrolling_text_pos(pos, loop_point)
 
+        # The line score already shows R, so the banner's big score would only
+        # repeat it -- and they want the same pixels.
+        show_score = not status.is_pregame(game.status())
+        if line_score_key is not None and line_score.enabled(layout, line_score_key):
+            show_score = False
+
         # draw last so it is always on top
         teams.render_team_banner(
             self.canvas,
@@ -143,9 +153,20 @@ class MainRenderer:
             self.data.config.team_colors,
             scoreboard.home_team,
             scoreboard.away_team,
-            show_score=not status.is_pregame(game.status()),
+            show_score=show_score,
             scoreboard_colors=colors,
         )
+
+        # Drawn after the banner, which paints the colour bands these digits sit on.
+        if line_score_key is not None:
+            line_score.render_line_score(
+                self.canvas,
+                layout,
+                colors,
+                self.data.config.team_colors,
+                scoreboard,
+                line_score_key,
+            )
 
         # Show network issues
         if self.data.network_issues:

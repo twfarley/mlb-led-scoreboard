@@ -60,13 +60,40 @@
       "scrolling_text": {
         "font_name": "5x7",
         "x": 0,
-        "y": 25,
+        "y": 21,
         "width": 128
       },
       "nohit_text": {
         "x": 98,
         "y": 12
       },
+      "line_score": {
+        "font_name": "5x7",
+        "x": 36,
+        "cell_width": 6,
+        "innings": 9,
+        "rhe_x": 92,
+        "rhe_width": 12,
+        "label": {
+          "font_name": "4x6",
+          "y": 27
+        },
+        "away": {
+          "y": 40
+        },
+        "home": {
+          "y": 58
+        },
+        "separator": {
+          "offset": -8,
+          "height": 10
+        },
+        "marker": {
+          "size": 3,
+          "offset": 1
+        }
+      },
+
       "record": {
         "font_name": "4x6",
         "enabled": true,
@@ -91,6 +118,32 @@
           "y": 44
         },
         "show_bases_and_outs": true,
+        "line_score": {
+          "font_name": "5x7",
+          "x": 36,
+          "cell_width": 6,
+          "innings": 9,
+          "rhe_x": 92,
+          "rhe_width": 12,
+          "label": {
+            "font_name": "4x6",
+            "y": 27
+          },
+          "away": {
+            "y": 40
+          },
+          "home": {
+            "y": 58
+          },
+          "separator": {
+            "offset": -8,
+            "height": 10
+          },
+          "marker": {
+            "size": 3,
+            "offset": 1
+          }
+        },
         "due_up": {
           "due": {
             "font_name": "5x7",
@@ -379,6 +432,7 @@
           "y": 60
         },
         "show_hits_and_errors": false,
+        "show_innings": true,
         "show_abs_challenges": true,
         "compress_digits": false,
         "shorten_team_name_on_high_line_score": true,

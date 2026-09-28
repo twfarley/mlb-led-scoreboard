@@ -20,6 +20,7 @@ So there is nothing to wait for -- the worry that records would lag a game behin
 does not hold.
 """
 
+import copy
 import io
 import unittest
 
@@ -35,11 +36,23 @@ BANNER_TOP = 28
 TEAM_BLOCK_RIGHT_EDGE = 52
 
 
-def render(screen="final"):
+def render(screen="final", coords=None):
     layout_preview._layout_pool.clear()
-    png = layout_preview.render(SIZE, screen, text_pos=0)
+    png = layout_preview.render(SIZE, screen, coords=coords, text_pos=0)
     layout_preview._layout_pool.clear()
     return Image.open(io.BytesIO(png)).convert("RGB")
+
+
+def without_line_score():
+    """This layout with `teams.line_score.show_innings` off, as a coords override.
+
+    The line score and the season records report the same game from the same
+    band, so the postgame renderer draws whichever one the layout asked for. The
+    records therefore only exist in this configuration.
+    """
+    override = copy.deepcopy(layout_preview._coords_for(SIZE))
+    override["teams"]["line_score"]["show_innings"] = False
+    return override
 
 
 def coords():
@@ -81,11 +94,25 @@ class TestFinalScreenLayout(unittest.TestCase):
 
     def test_the_two_lines_stay_visually_separate(self):
         for screen in ("final", "final_nohitter"):
-            groups = lit_row_groups(render(screen), range(0, BANNER_TOP))
+            groups = lit_row_groups(render(screen, coords=without_line_score()), range(0, BANNER_TOP))
             self.assertEqual(
                 len(groups),
                 2,
                 f"{screen}: expected FINAL and the scroll as two separate lines, got rows {groups}",
+            )
+
+    def test_the_line_score_headers_are_a_third_line_of_their_own(self):
+        """The band holds 28 rows and the line score wants a row of headers in
+        it, which leaves 7x13 FINAL, the 5x7 scroll and the 4x6 headers sharing
+        13 rows below FINAL -- exactly the height of the three of them. A merge
+        here is the scroll running through the inning numbers.
+        """
+        for screen in ("final", "final_nohitter"):
+            groups = lit_row_groups(render(screen), range(0, BANNER_TOP))
+            self.assertEqual(
+                len(groups),
+                3,
+                f"{screen}: expected FINAL, the scroll and the headers as three lines, got rows {groups}",
             )
 
     def test_the_scroll_starts_at_the_left_edge(self):
@@ -116,13 +143,25 @@ class TestFinalRecords(unittest.TestCase):
         self.assertIn(coords()["record"]["home"]["y"], range(46, 64))
 
     def test_both_records_actually_render(self):
-        image = render()
+        image = render(coords=without_line_score())
         pixels = image.load()
         for side in ("away", "home"):
             x0, y = coords()["record"][side]["x"], coords()["record"][side]["y"]
             lit = [x for x in range(x0, 128) for row in range(y - 5, y + 1) if pixels[x, row] != BACKGROUND]
             self.assertTrue(lit, f"the {side} record should be drawn")
             self.assertLess(min(lit) - x0, 2, f"the {side} record should start at x={x0}")
+
+    def test_a_line_score_replaces_them(self):
+        """Both would occupy the same rows to the right of the score, and the
+        shape of the whole game is the better use of them. Compared as renders
+        because the line score lights the same pixels the records would.
+        """
+        self.assertNotEqual(
+            layout_preview.render(SIZE, "final", text_pos=0),
+            layout_preview.render(SIZE, "final", coords=without_line_score(), text_pos=0),
+            "the switch should change what the postgame renderer puts beside the score",
+        )
+        layout_preview._layout_pool.clear()
 
     def test_the_nohit_banner_does_not_land_on_a_record(self):
         """It used to sit at (55, 61), which is where the home record now is."""

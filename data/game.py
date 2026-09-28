@@ -27,6 +27,7 @@ API_FIELDS = (
     + "currentPlay,result,eventType,playEvents,isPitch,pitchData,startSpeed,details,type,code,description,decisions,"
     + "winner,loser,save,id,linescore,outs,balls,strikes,note,inningState,currentInning,currentInningOrdinal,offense,"
     + "batter,inHole,onDeck,first,second,third,defense,pitcher,boxscore,teams,runs,players,seasonStats,pitching,wins,"
+    + "innings,"
     + "losses,saves,era,hits,errors,stats,pitching,numberOfPitches,batting,avg,homeRuns,rbi,battingOrder,"
     + "weather,condition,temp,wind,metaData,timeStamp,"
     + "absChallenges,remaining"
@@ -214,6 +215,18 @@ class Game:
                 return "away"
             return "home"
         return None
+
+    def inning_line_score(self):
+        """Runs per inning for both sides, oldest first.
+
+        Returns one ``(away, home)`` tuple per inning the API reports. A side
+        that has not batted -- the bottom of an in-progress inning, or a home
+        team that never needed its last at-bat -- carries no ``runs`` key, and
+        comes back as ``None`` so the renderer can leave the cell blank instead
+        of printing a nought that never happened.
+        """
+        innings = self._current_data["liveData"]["linescore"].get("innings", [])
+        return [(frame.get("away", {}).get("runs"), frame.get("home", {}).get("runs")) for frame in innings]
 
     def inning_state(self):
         return self._current_data["liveData"]["linescore"].get("inningState", "Top")

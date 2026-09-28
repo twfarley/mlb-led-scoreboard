@@ -135,3 +135,8 @@ team_colors.jpg
 # Editors
 .vscode/
 .claude/
+
+# Local MCP config and scoreboard stashes -- these carry access tokens
+.mcp.json
+ha_stash.json
+*.json.old

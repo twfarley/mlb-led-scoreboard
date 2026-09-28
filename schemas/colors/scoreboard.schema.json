@@ -113,6 +113,16 @@
       "additionalProperties": false
     },
     "batter_count":       { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59}  },
+    "line_score": {
+      "type": "object",
+      "x-format": "grid",
+      "description": "Line score furniture. The run values themselves take each team's text colour from colors/teams.json, so they stay legible on either band.",
+      "properties": {
+        "label":  { "$ref": "#/$defs/color", "default": {"r": 120, "g": 112, "b": 70}  },
+        "marker": { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59}  }
+      },
+      "additionalProperties": false
+    },
     "nohit_text":         { "$ref": "#/$defs/color", "default": {"r": 255, "g": 110, "b": 110} },
     "perfect_game_text":  { "$ref": "#/$defs/color", "default": {"r": 255, "g": 110, "b": 110} },
     "pregame": {
