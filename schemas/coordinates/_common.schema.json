@@ -198,7 +198,7 @@
         },
         "separator": {
           "type": "object",
-          "description": "Rules either side of the inning columns, offset from each row's y so they stay the height of the team abbreviation beside them.",
+          "description": "The rule between the inning columns and the R/H/E totals, offset from each row's y so it stays the height of the team abbreviation beside it. There is no matching rule on the left: against the abbreviation a 1px bar reads as a letter, turning MIL into MILI.",
           "properties": {
             "offset": { "type": "integer" },
             "height": { "type": "integer" }

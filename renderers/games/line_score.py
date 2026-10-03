@@ -71,7 +71,7 @@ def render_line_score(canvas, layout, colors, team_colors, scoreboard, key):
         row_y = coords[side]["y"]
         runs = [frame[0 if side == "away" else 1] for frame in window]
 
-        __render_separators(canvas, coords, row_y, text_color)
+        __render_separator(canvas, coords, row_y, text_color)
         __render_innings(canvas, coords, columns, font, row_y, text_color, runs)
         __render_totals(canvas, coords, font, row_y, text_color, team)
 
@@ -122,18 +122,24 @@ def __render_totals(canvas, coords, font, y, color, team):
         )
 
 
-def __render_separators(canvas, coords, row_y, color):
-    """Rules either side of the inning columns.
+def __render_separator(canvas, coords, row_y, color):
+    """The rule between the inning columns and the R/H/E totals.
 
-    Both are derived from the column geometry so they keep an even gap when the
-    cell width changes, and they are cut to the height of the team abbreviation
-    beside them rather than the full band.
+    There used to be a matching one on the left, closing the grid off from the
+    team abbreviation. It read as a letter: a 1px bar the height of the caps,
+    one gap away from "MIL", makes the row say MILI. The totals need separating
+    from the innings and nothing needs separating from the abbreviation, so only
+    the right-hand rule survives.
+
+    Derived from the column geometry so it keeps its gap when the cell width
+    changes, and cut to the height of the team abbreviation beside it rather
+    than the full band.
     """
     separator = coords["separator"]
     top = row_y + separator["offset"]
     bottom = top + separator["height"] - 1
-    for x in (coords["x"] - 3, coords["x"] + __band(coords) + 1):
-        graphics.DrawLine(canvas, x, top, x, bottom, color)
+    x = coords["x"] + __band(coords) + 1
+    graphics.DrawLine(canvas, x, top, x, bottom, color)
 
 
 def __render_current_inning(canvas, colors, coords, columns, scoreboard, start):
@@ -186,7 +192,7 @@ def __extend_band(canvas, layout, coords, side, rgb):
 def __columns(coords, label_font, played):
     """How many inning columns fit, given how wide their headers have to be.
 
-    The band between the separators is fixed at `innings * cell_width`, so a
+    The width of the inning grid is fixed at `innings * cell_width`, so a
     game that reaches double figures buys legible headers by giving up columns
     rather than by growing: nine 6px cells become five 10px ones once a label
     needs two digits. That is the trade the early innings are there to make.
@@ -202,7 +208,7 @@ def __columns(coords, label_font, played):
 
 
 def __band(coords):
-    """Width of the ruled area, which `__render_separators` draws the ends of."""
+    """Width of the inning grid, which `__render_separator` draws the right edge of."""
     return coords["innings"] * coords["cell_width"]
 
 
