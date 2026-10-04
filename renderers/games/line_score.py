@@ -7,7 +7,6 @@ banner's per-team text colour, so the numbers stay legible on either team's
 background without a second palette to keep in sync.
 """
 
-from bullpen.util import center_text_position
 from data import status
 from data.scoreboard.inning import Inning
 from driver import graphics
@@ -87,11 +86,11 @@ def __render_labels(canvas, coords, columns, font, color, start):
         # The window slides in extra innings, so these are absolute inning
         # numbers -- a 12th-inning game reads 8..12, not 1..5.
         number = str(start + offset + 1)
-        x = center_text_position(number, __inning_center(coords, columns, offset), width)
+        x = __centered(number, __inning_center(coords, columns, offset), width)
         graphics.DrawText(canvas, font["font"], x, y, color, number)
 
     for index, label in enumerate(("R", "H", "E")):
-        x = center_text_position(label, __total_center(coords, index), width)
+        x = __centered(label, __total_center(coords, index), width)
         graphics.DrawText(canvas, font["font"], x, y, color, label)
 
 
@@ -106,7 +105,7 @@ def __render_innings(canvas, coords, columns, font, y, color, runs):
         graphics.DrawText(
             canvas,
             font["font"],
-            center_text_position(text, __inning_center(coords, columns, offset), width),
+            __centered(text, __inning_center(coords, columns, offset), width),
             y,
             color,
             text,
@@ -117,9 +116,7 @@ def __render_totals(canvas, coords, font, y, color, team):
     width = font["size"]["width"]
     for index, total in enumerate((team.runs, team.hits, team.errors)):
         text = str(total)
-        graphics.DrawText(
-            canvas, font["font"], center_text_position(text, __total_center(coords, index), width), y, color, text
-        )
+        graphics.DrawText(canvas, font["font"], __centered(text, __total_center(coords, index), width), y, color, text)
 
 
 def __render_separator(canvas, coords, row_y, color):
@@ -205,6 +202,22 @@ def __columns(coords, label_font, played):
     digits = 2 if played >= 10 else 1
     needed = max(digits * label_font["size"]["width"] + 2, coords["cell_width"])
     return max(1, __band(coords) // needed)
+
+
+def __centered(text, center, width):
+    """Left edge for `text` with its ink centred on `center`.
+
+    bullpen's center_text_position centres the ADVANCE box, which carries a
+    trailing spacing column no glyph draws in, so text lands half a pixel left
+    of where it was asked to go -- and by a different amount in a 4px font than
+    a 5px one. Here the headers sit directly above the values, so that half
+    pixel showed up as a whole one: a column of 0s stood 1px right of its own
+    inning number.
+
+    n characters occupy `n * width` of advance but only `n * width - 1` of ink,
+    which is the span this centres.
+    """
+    return center - (len(text) * width - 1) // 2
 
 
 def __band(coords):
