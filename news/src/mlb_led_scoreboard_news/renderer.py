@@ -10,6 +10,7 @@ from bullpen.time_formats import TIME_FORMAT_12H
 from bullpen.util import center_text_position, scrolling_text
 
 from .config import Config
+from .palette import ICON_ROLES
 from .weather import Weather
 from .headlines import Headlines
 from .data import NewsData
@@ -39,7 +40,10 @@ class Renderer(api.PluginRenderer["NewsData"]):
         self.scroll_color = colors.graphics_color("news.scrolling_text")
 
         self.icon_coords = layout.coords("news.weather_icon")
-        self.icon_color = colors.color("news.weather_icon")
+        # The icons are drawn in the palette's colours, so a pixel's colour says
+        # which part of the sky it belongs to. Resolve each to the configured
+        # colour once, here, rather than per pixel per frame.
+        self.icon_colors = {rgb: colors.color("news.weather_icon.{}".format(role)) for rgb, role in ICON_ROLES.items()}
 
         self.first = True
 
@@ -82,20 +86,21 @@ class Renderer(api.PluginRenderer["NewsData"]):
         resize = self.icon_coords.get("rescale_icon")
 
         if resize:
+            # NEAREST keeps the palette exact, so the lookup below still matches
+            # after a rescale. Any smoothing would blend the roles together.
             weather_icon = weather_icon.resize(
                 (weather_icon.width * resize, weather_icon.height * resize), Image.NEAREST
             )
         for x in range(weather_icon.width):
             for y in range(weather_icon.height):
                 pixel = weather_icon.getpixel((x, y))
-                if pixel[3] > 0:
-                    canvas.SetPixel(
-                        self.icon_coords["x"] + x,
-                        self.icon_coords["y"] + y,
-                        self.icon_color["r"],
-                        self.icon_color["g"],
-                        self.icon_color["b"],
-                    )
+                if pixel[3] == 0:
+                    continue
+                # A colour that isn't one of ours belongs to an icon somebody
+                # drew themselves, so draw it as they painted it.
+                color = self.icon_colors.get(pixel[:3])
+                r, g, b = (color["r"], color["g"], color["b"]) if color else pixel[:3]
+                canvas.SetPixel(self.icon_coords["x"] + x, self.icon_coords["y"] + y, r, g, b)
 
     def _render_news_ticker(self, canvas: "Canvas", graphics, headlines: Headlines, text_pos) -> int:
 

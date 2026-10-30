@@ -91,7 +91,13 @@ class Weather:
         return UpdateStatus.DEFERRED
 
     def temperature_string(self):
-        return "{}{}".format(int(round(self.temp)), self.temperature_unit[:1].upper())
+        # Every patched font carries U+00B0, so the degree sign needs no
+        # drawing of its own -- see assets/fonts/README.md.
+        #
+        # The unit letter is dropped rather than moved aside: it costs a
+        # character everywhere, which is one more than w32h32 has, and the unit
+        # is a setting the reader chose rather than news about the weather.
+        return "{}°".format(int(round(self.temp)))
 
     def wind_speed_string(self):
         speed_unit_string = "m/s" if self.speed_unit == "meters_sec" else "mph"

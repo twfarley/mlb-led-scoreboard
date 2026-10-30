@@ -189,12 +189,27 @@
       "properties": {
         "scrolling_text": { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
         "time":           { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
-        "conditions":     { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
-        "temperature":    { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
-        "wind_speed":     { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
-        "wind_dir":       { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
-        "wind":           { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
-        "weather_icon":   { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} },
+        "conditions":     { "$ref": "#/$defs/color", "default": {"r": 160, "g": 205, "b": 235} },
+        "temperature":    { "$ref": "#/$defs/color", "default": {"r": 255, "g": 255, "b": 255} },
+        "wind_speed":     { "$ref": "#/$defs/color", "default": {"r": 130, "g": 190, "b": 175} },
+        "wind_dir":       { "$ref": "#/$defs/color", "default": {"r": 130, "g": 190, "b": 175} },
+        "wind":           { "$ref": "#/$defs/color", "default": {"r": 130, "g": 190, "b": 175} },
+        "weather_icon": {
+          "type": "object",
+          "description": "One colour per part of the weather icons. The icon art is drawn in these roles, so changing one here recolours that part of every icon that uses it.",
+          "x-format": "grid",
+          "properties": {
+            "sun":       { "$ref": "#/$defs/color", "default": {"r": 255, "g": 190, "b": 40}  },
+            "moon":      { "$ref": "#/$defs/color", "default": {"r": 200, "g": 215, "b": 255} },
+            "cloud":     { "$ref": "#/$defs/color", "default": {"r": 205, "g": 215, "b": 230} },
+            "cloud_alt": { "$ref": "#/$defs/color", "default": {"r": 120, "g": 132, "b": 150} },
+            "rain":      { "$ref": "#/$defs/color", "default": {"r": 90,  "g": 150, "b": 255} },
+            "snow":      { "$ref": "#/$defs/color", "default": {"r": 235, "g": 245, "b": 255} },
+            "bolt":      { "$ref": "#/$defs/color", "default": {"r": 255, "g": 230, "b": 70}  },
+            "mist":      { "$ref": "#/$defs/color", "default": {"r": 150, "g": 160, "b": 175} }
+          },
+          "additionalProperties": false
+        },
         "text":           { "$ref": "#/$defs/color", "default": {"r": 255, "g": 235, "b": 59} }
       },
       "additionalProperties": false
