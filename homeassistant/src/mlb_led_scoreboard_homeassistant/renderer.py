@@ -28,6 +28,25 @@ if TYPE_CHECKING:
     from RGBMatrixEmulator.emulation.canvas import Canvas
 
 
+# Scoreboard 9.3.0 hands plugins the driver's own Font object, where the
+# metrics are attributes; 9.2.2 handed back a dict of font properties with the
+# face under "font". This board gets switched between the two to test upstream
+# branches, so read either shape rather than pinning the plugin to one.
+
+
+def font_width(font) -> int:
+    return font.width if hasattr(font, "width") else font["size"]["width"]
+
+
+def font_height(font) -> int:
+    return font.height if hasattr(font, "height") else font["size"]["height"]
+
+
+def font_face(font):
+    """The object DrawText expects."""
+    return font["font"] if isinstance(font, dict) else font
+
+
 # ── Default palette (RGB) ────────────────────────────────────────────────────
 _DEFAULTS = {
     "background": (0, 0, 0),
@@ -123,7 +142,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
         for x, y, r, g, b in self._bg_pixels:
             canvas.SetPixel(x, y, r, g, b)
 
-    def _compact_font(self, keypath: str, default_name: str) -> dict:
+    def _compact_font(self, keypath: str, default_name: str):
         """Font for a keypath, defaulting to a compact bundled font.
 
         Honours an explicit ``font_name`` override in the coordinates file if
@@ -263,8 +282,8 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
 
         # Center the label+value pair vertically within each cell so the grid
         # reads well whether cells are tight (many tiles) or roomy (few tiles).
-        lh = self._label_font["size"]["height"]
-        vh = self._value_font["size"]["height"]
+        lh = font_height(self._label_font)
+        vh = font_height(self._value_font)
         gap = 2
         pad = max(0, (cell_h - (lh + gap + vh)) // 2)
         for i, tile in enumerate(tiles):
@@ -334,7 +353,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             graphics,
             text,
             self._value_font,
-            top + self._value_font["size"]["height"],
+            top + font_height(self._value_font),
             self._gcolor(graphics, "value"),
             center_x=cx,
         )
@@ -531,7 +550,7 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             graphics,
             label,
             self._label_font,
-            value_y + self._label_font["size"]["height"] + 1,
+            value_y + font_height(self._label_font) + 1,
             self._gcolor(graphics, "label"),
             center_x=cx,
         )
@@ -647,9 +666,9 @@ class Renderer(api.PluginRenderer["HomeAssistantData"]):
             center_x = self.width // 2
         if color_override is not None:
             color = graphics.Color(*color_override)
-        char_w = font["size"]["width"]
+        char_w = font_width(font)
         x = center_text_position(text, center_x, char_w)
-        graphics.DrawText(canvas, font["font"], x, baseline_y, color, text)
+        graphics.DrawText(canvas, font_face(font), x, baseline_y, color, text)
 
     # ── Pixel primitive ──────────────────────────────────────────────────────
 
